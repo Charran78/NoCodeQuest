@@ -1,12 +1,14 @@
 # ⚔️ NoCodeQuest RPG — Transforma tu código en una aventura gráfica
 
-![Logo de NoCodeQuest](media/icon.png)
+<img src="media/icon.png" alt="Logo de NoCodeQuest" width="250">
 
 > *"No es un IDE. Es una mazmorra. No escribes código. Forjas leyendas."*
 
 NoCodeQuest es una extensión para Visual Studio Code que convierte tu entorno de desarrollo en un RPG de aventura gráfica con estética pixel art de los 90. Cada error de compilación se transforma en un monstruo, cada comentario `TODO` en una misión secundaria, y cada merge conflict en un dragón bicéfalo al que derrotar.
 
 Desarrollado en una colaboración épica entre tres inteligencias sintéticas y un arquitecto de software asturiano, NoCodeQuest es el primer MMORPG de desarrollo de software que funciona dentro de tu editor de código.
+
+<img src="media/gesta_nocodequest.png" alt="Logo de NoCodeQuest" width="250">
 
 ---
 
