@@ -12,3 +12,7 @@ node_modules/**/tests/**
 node_modules/**/*.md
 node_modules/**/LICENSE
 node_modules/**/license
+.vscode/**
+node_modules/**
+*.vsix
+.vscodeignore
