@@ -556,7 +556,7 @@ function createScene() {
         // 2. Crear Sombra del Bug (Oculta por defecto igual que el bug)
         bugShadow = this.add.ellipse(bugX, bugY + 22, 40, 12, 0x000000, 0.4).setVisible(false);
         // 👈 Cambia 2.5 por 1.5 para hacerlo más pequeño y setVisible(true) para que se vea
-        bugPawn = this.add.sprite(bugX, bugY, 'bug').setScale(1.5).setVisible(true).setFlipX(true);
+        bugPawn = this.add.sprite(bugX, bugY, 'bug').setScale(1.5).setVisible(false).setFlipX(true);
         console.log('[NoCodeQuest] Bug cargado');
 
         bossPawn = this.add.rectangle(W / 2, H * 0.35, 80, 65, 0x3d0c02).setVisible(false);
