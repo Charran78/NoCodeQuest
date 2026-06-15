@@ -1,0 +1,36 @@
+# Dependencias
+node_modules/
+
+# Archivos de empaquetado
+*.vsix
+
+# Carpeta de salida (si compilas TypeScript a JavaScript)
+out/
+
+# Archivos de configuración de VS Code (personales)
+.vscode/
+
+# Archivos de prueba
+.vscode-test/
+
+# Variables de entorno
+.env
+.env.local
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+#Notas
+*.txt
+*.docx
+
+#Cerebro
+brain/
+
+#Archivos
+media/originales/
+

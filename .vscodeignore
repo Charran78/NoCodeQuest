@@ -1,0 +1,14 @@
+# Archivos de desarrollo
+.vscode/**
+.git/**
+.gitignore
+README.md
+brain/**
+Resumen_ejecutivo.txt
+📋 Resumen Ejecutivo.docx
+node_modules/**/.bin/**
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/*.md
+node_modules/**/LICENSE
+node_modules/**/license
