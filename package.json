@@ -4,6 +4,10 @@
   "description": "Transforma tu entorno de desarrollo en una aventura gráfica de rol medieval. Combate bugs, sube de nivel y escucha al bardo Jaskier narrar tu código.",
   "version": "1.0.1",
   "publisher": "pedromencias",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Charran78/NoCodeQuest"
+  },
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -47,12 +51,12 @@
           "type": "string",
           "default": "llama-3.1-8b-instant",
           "enum": [
-            "qwen2.5-7b-instruct",
+            "qwen-2.5-8b-instruct",
             "llama-3.1-8b-instant",
             "gemma2-9b-it",
             "llama-3.3-70b-versatile"
           ],
-          "description": "Modelo de IA para la narración del bardo. qwen2.5-7b-instruct es el más rápido y barato."
+          "description": "Modelo de IA para la narración del bardo. qwen-2.5-8b-instruct es el más rápido y barato."
         },
         "nocodequest.playerName": {
           "type": "string",
