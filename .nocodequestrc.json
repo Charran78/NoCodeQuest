@@ -1,9 +1,9 @@
 {
   "player": {
     "name": "Aventurero",
-    "level": 4,
-    "exp": 355,
-    "gold": 580,
+    "level": 12,
+    "exp": 125,
+    "gold": 1380,
     "equipped": {
       "skin": "mono_fabrica",
       "weapon": "espada_linter"
@@ -17,10 +17,11 @@
     ],
     "skins": [
       "mono_fabrica",
-      "skin_mago"
+      "skin_mago",
+      "traje_arquitecto"
     ],
     "scrolls": {
-      "pergamino_estabilidad": 1,
+      "pergamino_estabilidad": 13,
       "pergamino_sabiduria": 1
     },
     "potions": {
@@ -30,17 +31,18 @@
   "badges": [
     "primer_encargo",
     "cazador_nulls",
-    "exterminador"
+    "exterminador",
+    "primer_commit"
   ],
   "lair": {
     "decorations": [
       "planta_buen_codigo"
     ],
-    "technical_debt_level": 89
+    "technical_debt_level": 74
   },
   "stats": {
-    "bugsDefeated": 119,
-    "commitsTotal": 0,
+    "bugsDefeated": 126,
+    "commitsTotal": 90,
     "questsCompleted": 12,
     "bossesDefeated": 0,
     "linesAnalyzed": 0

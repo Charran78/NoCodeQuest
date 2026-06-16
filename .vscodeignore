@@ -6,6 +6,9 @@ README.md
 brain/**
 Resumen_ejecutivo.txt
 📋 Resumen Ejecutivo.docx
+debug-*.md
+debug-server.js
+.dbg/**
 node_modules/**/.bin/**
 node_modules/**/test/**
 node_modules/**/tests/**
@@ -13,6 +16,5 @@ node_modules/**/*.md
 node_modules/**/LICENSE
 node_modules/**/license
 .vscode/**
-node_modules/**
 *.vsix
 .vscodeignore

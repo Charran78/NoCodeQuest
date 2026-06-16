@@ -14,7 +14,10 @@
   "categories": ["Other"],
   "keywords": ["rpg", "game", "productivity", "fun", "pixel-art"],
   "icon": "media/icon.png",
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:nocodequest.start",
+    "onCommand:nocodequest.showProfile"
+  ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
