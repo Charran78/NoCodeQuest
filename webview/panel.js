@@ -1728,6 +1728,13 @@ function renderChatSuggestion(suggestion) {
     history.appendChild(wrapper);
     history.scrollTop = history.scrollHeight;
 }
+function updateChatTitleModel() {
+    const titleEl = document.getElementById('chat-title');
+    if (!titleEl) return;
+    titleEl.textContent = lastAiModel
+        ? '💬 Consejo de Jasper · ' + lastAiModel
+        : '💬 Consejo de Jasper';
+}
 function pulseChatOverlay() {
     const overlay = document.getElementById('chat-overlay');
     if (!overlay) return;
@@ -2041,6 +2048,7 @@ window.addEventListener('message', (event) => {
         case 'chatResponse':
             toggleChat(true);
             lastAiModel = data.aiModel || null;
+            updateChatTitleModel();
             renderChatMessage('bard', data.text || '');
             if (data.suggestion) {
                 renderChatSuggestion(data.suggestion);

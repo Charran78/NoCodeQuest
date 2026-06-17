@@ -68,7 +68,8 @@ class AdventureOracle {
             badges: state.badges || [],
             accepted_quests: state.acceptedQuests || [],
             plant_health: plant.health,
-            technical_debt_level: lair.technical_debt_level || 0
+            technical_debt_level: lair.technical_debt_level || 0,
+            last_potion_at: lair.lastPotionAt || null
         };
     }
 
@@ -84,6 +85,13 @@ class AdventureOracle {
         const plantIsWithered = player.plant_health === 'marchita';
         const canBuyPotion = player.gold >= 100;
         const hasCoffeePotion = player.coffee_potions > 0;
+        const potionCooldownMinutes = 15;
+        const lastPotionAt = player.last_potion_at ? new Date(player.last_potion_at) : null;
+        const now = new Date();
+        const minutesSincePotion = lastPotionAt
+            ? (now.getTime() - lastPotionAt.getTime()) / (1000 * 60)
+            : Infinity;
+        const canSuggestPotionAgain = minutesSincePotion >= potionCooldownMinutes;
 
         if (criticalDiagnostics.length > 0) {
             const error = criticalDiagnostics[0];
@@ -122,7 +130,7 @@ class AdventureOracle {
             }));
         }
 
-        if (hasCoffeePotion) {
+        if (hasCoffeePotion && (plantIsWithered || player.plant_health === 'pachucha') && canSuggestPotionAgain) {
             cards.push(this.createCard({
                 id: 'use-coffee-potion',
                 title: '☕ Beber Poción de Café',

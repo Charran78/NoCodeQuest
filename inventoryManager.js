@@ -39,7 +39,8 @@ const NEW_GAME_STATE = {
     badges: [],
     lair: {
         decorations: ['planta_buen_codigo'],
-        technical_debt_level: 0
+        technical_debt_level: 0,
+        lastPotionAt: null
     },
     acceptedQuests: [],
     adventureLog: [],
@@ -344,6 +345,7 @@ class InventoryManager {
 
         inventory.potions.pocion_cafe--;
         lair.technical_debt_level = Math.max(0, lair.technical_debt_level - 15);
+        lair.lastPotionAt = new Date().toISOString();
         this.saveGame();
         this.recordAdventureEvent({
             type: 'potion-used',
