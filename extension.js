@@ -43,10 +43,84 @@ function activate(context) {
     let currentActiveQuests = [];
     let lastErrorCount      = 0;
     let lastChatMessage     = null;
+    let chatTranscript      = [];
 
-    async function refreshAdventureCards(panel = currentPanel) {
+    function appendChatTranscript(entry) {
+        chatTranscript.push({
+            ...entry,
+            recordedAt: new Date().toISOString()
+        });
+        if (chatTranscript.length > 80) {
+            chatTranscript = chatTranscript.slice(chatTranscript.length - 80);
+        }
+    }
+
+    function buildChatTranscriptMarkdown() {
+        const model = getConfig('groqModel') || 'llama-3.1-8b-instant';
+        const lines = [];
+        lines.push('# NoCodeQuest — Registro de Chat');
+        lines.push('');
+        lines.push('- Modelo: ' + model);
+        lines.push('- Generado: ' + new Date().toISOString());
+        lines.push('');
+
+        for (const entry of chatTranscript) {
+            const who = entry.role === 'user' ? 'Usuario' : 'Jasper';
+            lines.push('---');
+            lines.push('');
+            lines.push('## ' + who);
+            if (entry.recordedAt) lines.push('- ' + entry.recordedAt);
+            if (entry.aiModel && entry.role !== 'user') lines.push('- Modelo: ' + entry.aiModel);
+            if (entry.suggestion?.title && entry.role !== 'user') {
+                lines.push('- HITL: ' + entry.suggestion.title + ' (' + (entry.suggestion.recommended_action || 'accion') + ')');
+            }
+            lines.push('');
+            lines.push(String(entry.text || '').trim());
+            lines.push('');
+        }
+
+        if (!chatTranscript.length) {
+            lines.push('_(Aún no hay entradas. Usa el chat dentro del WebView para generar conversación.)_');
+            lines.push('');
+        }
+
+        return lines.join('\n');
+    }
+
+    function buildChatLogFileName() {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        return `nocodequest_chatlog_${stamp}.md`;
+    }
+
+    async function quickExportChatTranscript(panel) {
+        const logDir = workspaceRoot ? path.join(workspaceRoot, '.nocodequest', 'chatlogs') : null;
+        if (!logDir) {
+            sendToPanel(panel, 'hitlToast', { text: '📤 No hay workspace abierto para exportar el registro.' });
+            return;
+        }
+
+        const dirUri = vscode.Uri.file(logDir);
+        await vscode.workspace.fs.createDirectory(dirUri);
+
+        const fileUri = vscode.Uri.file(path.join(logDir, buildChatLogFileName()));
+        const md = buildChatTranscriptMarkdown();
+        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(md, 'utf8'));
+
+        try {
+            await vscode.env.clipboard.writeText(fileUri.fsPath);
+        } catch (_) { }
+
+        sendToPanel(panel, 'hitlToast', { text: '📤 Registro guardado y ruta copiada' });
+
+        try {
+            const doc = await vscode.workspace.openTextDocument(fileUri);
+            await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
+        } catch (_) { }
+    }
+
+    async function refreshAdventureCards(panel = currentPanel, ideStateOverride = null) {
         if (!panel) return;
-        const ideState = await adventureOracle.collectIdeState({
+        const ideState = ideStateOverride || await adventureOracle.collectIdeState({
             gameState,
             lastChatMessage
         });
@@ -58,6 +132,181 @@ function activate(context) {
     function dismissAdventureCard(cardId, panel = currentPanel) {
         if (!cardId) return;
         sendToPanel(panel, 'removeAdventureCard', { cardId });
+    }
+
+    function normalizeChatText(value) {
+        return String(value || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function getCardPriorityScore(priority) {
+        const scores = {
+            critical: 400,
+            high: 300,
+            medium: 200,
+            low: 100,
+            optional: 0
+        };
+        return scores[priority] ?? 0;
+    }
+
+    function getSuggestionIntent(action) {
+        switch (action) {
+            case 'attack_bug':
+                return 'resolve_error';
+            case 'accept_quest':
+                return 'accept_mission';
+            case 'use_potion':
+                return 'recover_stability';
+            case 'open_shop':
+                return 'prepare_loadout';
+            case 'commit_changes':
+                return 'preserve_progress';
+            default:
+                return 'continue_exploring';
+        }
+    }
+
+    function getSuggestionCta(card) {
+        switch (card?.action) {
+            case 'attack_bug':
+                return 'Ir al enemigo';
+            case 'accept_quest':
+                return 'Juramentar misión';
+            case 'use_potion':
+                return 'Beber poción';
+            case 'open_shop':
+                return 'Abrir mercado';
+            case 'commit_changes':
+                return 'Abrir sello real';
+            default:
+                return 'Seguir adelante';
+        }
+    }
+
+    function buildSuggestionReason(card, ideState) {
+        const diagnostics = ideState?.diagnostics || [];
+        const modifiedFiles = ideState?.modified_files || [];
+        const quests = ideState?.quests || [];
+        const player = ideState?.player_state || {};
+
+        switch (card?.action) {
+            case 'attack_bug': {
+                const criticalError = diagnostics.find(entry => entry.severity === 'error');
+                if (!criticalError) return 'Hay una amenaza activa en el IDE y conviene golpear primero.';
+                return `Hay un error activo en ${criticalError.file}, línea ${criticalError.line}. Jasper propone atacar donde el IDE ya ha visto sangre.`;
+            }
+            case 'accept_quest': {
+                const quest = quests.find(entry => entry.id === card?.target?.quest_id);
+                if (!quest) return 'Hay un encargo pendiente que todavía no has jurado.';
+                return `Existe un encargo pendiente en ${quest.fileName}. Convertirlo en misión te deja un objetivo explícito dentro de la campaña.`;
+            }
+            case 'use_potion':
+                return `La planta está ${player.plant_health || 'inestable'} y aún guardas ${player.coffee_potions || 0} poción(es) de café. Recuperar estabilidad ahora reduce fricción.`;
+            case 'open_shop':
+                return `Tienes ${player.gold || 0} monedas y el mercado puede darte aire antes del siguiente combate.`;
+            case 'commit_changes':
+                return `Hay ${modifiedFiles.length} archivo(s) con cambios y ningún sello reciente. Fijar el progreso ahora evita perder una victoria parcial.`;
+            default:
+                return 'No hay urgencias claras; Jasper recomienda seguir explorando el reino del código.';
+        }
+    }
+
+    function getActionKeywordBoost(action, normalizedText) {
+        const keywordMap = {
+            attack_bug: ['bug', 'error', 'fallo', 'diagnostico', 'diagnosticos', 'arreglar', 'enemigo', 'rompio', 'roto'],
+            accept_quest: ['quest', 'mision', 'misiones', 'todo', 'fixme', 'pendiente', 'encargo'],
+            use_potion: ['cafe', 'pocion', 'planta', 'caos', 'energia', 'descansar', 'recuperar'],
+            open_shop: ['tienda', 'mercado', 'comprar', 'compra', 'oro', 'arma', 'equipo'],
+            commit_changes: ['commit', 'git', 'guardar', 'sello', 'sellar', 'repositorio', 'repo', 'cronica']
+        };
+        const keywords = keywordMap[action] || [];
+        return keywords.some(keyword => normalizedText.includes(keyword)) ? 220 : 0;
+    }
+
+    function selectSuggestedCard(cards, userText) {
+        if (!cards.length) return null;
+
+        const normalizedText = normalizeChatText(userText);
+        const rankedCards = cards
+            .map((card, index) => ({
+                card,
+                score: getCardPriorityScore(card.priority) + getActionKeywordBoost(card.action, normalizedText) - index
+            }))
+            .sort((left, right) => right.score - left.score);
+
+        return rankedCards[0]?.card || null;
+    }
+
+    function buildChatSuggestion(ideState, userText) {
+        const cards = Array.isArray(ideState?.adventure_cards) ? ideState.adventure_cards : [];
+        const selectedCard = selectSuggestedCard(cards, userText);
+        if (!selectedCard) return null;
+
+        return {
+            id: `chat-hitl-${selectedCard.id}`,
+            source: 'adventure_card',
+            intent: getSuggestionIntent(selectedCard.action),
+            title: selectedCard.title,
+            recommended_action: selectedCard.action,
+            reason: buildSuggestionReason(selectedCard, ideState),
+            cta_label: getSuggestionCta(selectedCard),
+            requires_confirmation: selectedCard.action === 'commit_changes',
+            payload: {
+                cardId: selectedCard.id,
+                card: selectedCard
+            }
+        };
+    }
+
+    function resolveSuggestionCard(suggestion, ideState) {
+        const cards = Array.isArray(ideState?.adventure_cards) ? ideState.adventure_cards : [];
+        const cardId = suggestion?.payload?.cardId;
+        if (cardId) {
+            const liveCard = cards.find(card => card.id === cardId);
+            if (liveCard) return liveCard;
+        }
+        return suggestion?.payload?.card || null;
+    }
+
+    async function executeStructuredSuggestion(panel, suggestion, narrationEnabled, apiKey, model) {
+        if (!suggestion) return;
+
+        const ideState = await adventureOracle.collectIdeState({
+            gameState,
+            lastChatMessage
+        });
+        const card = resolveSuggestionCard(suggestion, ideState);
+
+        if (!card) {
+            sendToPanel(panel, 'speak', {
+                text: '🧭 La sugerencia de Jasper ya no coincide con el estado del IDE. El Oráculo recomienda pedir consejo de nuevo.'
+            });
+            await refreshAdventureCards(panel, ideState);
+            return;
+        }
+
+        sendToPanel(panel, 'markChatSuggestionUsed', {
+            suggestionId: suggestion.id
+        });
+
+        if (card.action === 'ignore') {
+            sendToPanel(panel, 'speak', {
+                text: '🌿 Jasper no ve un ritual urgente. Puedes seguir explorando hasta que el IDE revele una nueva grieta.'
+            });
+            sendToPanel(panel, 'hitlToast', {
+                text: '🌿 Sin urgencias: sigue explorando'
+            });
+            await refreshAdventureCards(panel, ideState);
+            return;
+        }
+
+        sendToPanel(panel, 'hitlToast', {
+            text: `🧭 Ritual: ${card.title || card.action}`
+        });
+        await handleAdventureCardSelection(card, panel, narrationEnabled, apiKey, model);
     }
 
     function getPrimaryRepository() {
@@ -416,6 +665,15 @@ function activate(context) {
                             role: 'user',
                             content: userText
                         };
+                        appendChatTranscript({
+                            role: 'user',
+                            text: userText
+                        });
+                        const ideState = await adventureOracle.collectIdeState({
+                            gameState,
+                            lastChatMessage
+                        });
+                        const suggestion = buildChatSuggestion(ideState, userText);
                         const text = await fetchNarration(
                             userText,
                             'chat',
@@ -423,12 +681,68 @@ function activate(context) {
                             apiKey,
                             model
                         );
+                        appendChatTranscript({
+                            role: 'assistant',
+                            text,
+                            aiModel: model,
+                            suggestion
+                        });
                         sendToPanel(currentPanel, 'chatResponse', {
                             userText,
-                            text
+                            text,
+                            suggestion,
+                            aiModel: model
                         });
+                        if (suggestion?.title) {
+                            sendToPanel(currentPanel, 'hitlToast', {
+                                text: `🧭 Jasper sugiere: ${suggestion.title}`
+                            });
+                        }
+                        if (suggestion?.payload?.cardId) {
+                            sendToPanel(currentPanel, 'hitlNudge', {
+                                cardId: suggestion.payload.cardId,
+                                action: suggestion.recommended_action || null
+                            });
+                        }
                         sendToPanel(currentPanel, 'speak', { text });
-                        await refreshAdventureCards(currentPanel);
+                        await refreshAdventureCards(currentPanel, ideState);
+                        break;
+                    }
+
+                    case 'executeStructuredSuggestion': {
+                        await executeStructuredSuggestion(
+                            currentPanel,
+                            message.suggestion,
+                            narrationEnabled,
+                            apiKey,
+                            model
+                        );
+                        break;
+                    }
+                    
+                    case 'moveToColumnOne': {
+                        try {
+                            currentPanel?.reveal(vscode.ViewColumn.One);
+                        } catch (_) { }
+                        break;
+                    }
+
+                    case 'toggleMaximizeEditorGroup': {
+                        try {
+                            await vscode.commands.executeCommand('workbench.action.toggleMaximizeEditorGroup');
+                        } catch (_) { }
+                        break;
+                    }
+
+                    case 'toggleZenMode': {
+                        try {
+                            await vscode.commands.executeCommand('workbench.action.toggleZenMode');
+                        } catch (_) { }
+                        break;
+                    }
+
+                    case 'exportChatTranscript': {
+                        await quickExportChatTranscript(currentPanel);
                         break;
                     }
 

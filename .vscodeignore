@@ -9,6 +9,8 @@ Resumen_ejecutivo.txt
 debug-*.md
 debug-server.js
 .dbg/**
+.nocodequest/**
+.nocodequestrc.json
 node_modules/**/.bin/**
 node_modules/**/test/**
 node_modules/**/tests/**

@@ -20,7 +20,10 @@ Hoy NoCodeQuest ya no es solo un juego que reacciona a bugs. Está evolucionando
 - **Planta de la Guarida** como indicador simbólico de deuda técnica.
 - **Crónica de Aventuras** con entradas persistentes y exportación visual tipo insignia final.
 - **Cartas de Destino** generadas por reglas fijas a partir del estado real del IDE.
-- **Narración de Jasper** usando Groq cuando hay API key configurada.
+- **Chat HITL de Jasper**: respuesta narrativa + sugerencia estructurada accionable (ejecutable desde el chat).
+- **Exportación rápida del chat** a Markdown (1 clic) para soporte/feedback sin copiar y pegar.
+- **Controles de vista** tipo “vídeo”: maximizar, modo teatro y modo zen.
+- **Narración de Jasper** usando Groq cuando hay API key configurada (modelo seleccionable, incluye Qwen).
 
 ---
 
@@ -31,6 +34,8 @@ Hoy NoCodeQuest ya no es solo un juego que reacciona a bugs. Está evolucionando
 - **🔒 Commit ritualizado**: el panel puede preparar y confirmar commits con mensaje propuesto por Jasper.
 - **📜 Crónica**: cada acción importante deja huella narrativa en el `adventureLog`.
 - **🪞 Estado del IDE**: existe un oráculo local que recopila archivo activo, diagnósticos, estado Git, quests y estado del jugador.
+- **💬 HITL de chat**: Jasper sugiere un siguiente paso (basado en `ide_state` + Cartas de Destino) y el jugador puede ejecutarlo con un botón.
+- **🖥️ Vista grande**: controles dentro del WebView para agrandar la escena sin pelearte con el layout de VS Code.
 
 ---
 
@@ -88,7 +93,8 @@ Después abre el proyecto en VS Code y pulsa `F5` para lanzar la ventana de desa
 3. Usa el panel del juego para atacar, comprar, equipar, beber pociones, aceptar misiones y sellar commits.
 4. Consulta `📜 Crónica` para revisar tus hazañas.
 5. Usa `🪞 Destino` para elegir Cartas de Destino sugeridas por el estado del IDE.
-6. Si configuras Groq, Jasper comentará la aventura y propondrá narrativas más ricas.
+6. Abre `💬 Chat` para pedir consejo: verás una sugerencia HITL con botón de ejecución.
+7. Si configuras Groq, Jasper comentará la aventura y propondrá narrativas más ricas.
 
 ---
 
@@ -105,34 +111,29 @@ Modelos útiles:
 - `qwen-2.5-8b-instruct`
 - `llama-3.3-70b-versatile`
 
+Notas:
+- El chat muestra el **modelo usado** en la sugerencia HITL para que puedas verificar si estás en Qwen u otro.
+- La API key se configura en ajustes de VS Code; no se debe commitear en el repositorio.
+- La partida se guarda en `.nocodequestrc.json` dentro del workspace (estado local). Hay un ejemplo en `.nocodequestrc.example.json`.
+
 ---
 
 ## **Roadmap**
 
 ### **Fase Actual**
-- Consolidar la ejecución real de las Cartas de Destino.
-- Mantener WebView, estado del juego e IDE sincronizados.
-- Refinar Crónica, commit modal y acciones directas desde el panel.
+- Consolidar el bucle HITL (chat + cartas + ejecución) y pulir UX.
+- Mantener WebView, estado del juego e IDE sincronizados (sin pantallas negras ni CSP frágil).
+- Refinar Crónica, commit modal y controles de vista para jugar cómodo.
 
 ### **Siguiente Fase**
-- Dar al chat de Jasper una salida estructurada en JSON.
-- Convertir sus respuestas en sugerencias accionables del tipo:
-```json
-{
-  "intent": "suggest_next_action",
-  "recommended_action": "open_shop",
-  "reason": "La planta esta marchita y hay oro suficiente",
-  "payload": {
-    "card_id": "save-plant-at-market"
-  },
-  "requires_confirmation": true
-}
-```
+- Mejorar la “conexión escena ↔ IDE”: más foco visual y feedback cuando el IDE cambia (sin depender de nuevos sprites).
+- Añadir assets v3 (Jasper, monstruos, bosses y fondos) y pulir la estética.
+- Endurecer telemetría/diagnóstico para bugs reales (sin ruido y sin manuales).
 
 ### **Después**
-- Conectar el Oráculo a Groq para generar Cartas de Destino por IA.
-- Mejorar la sincronización entre chat, IDE y escena del juego.
-- Explorar un puente HITL más sólido entre Jasper, el jugador y el asistente del IDE.
+- Opcional: permitir que Groq proponga estructura adicional (validada) para enriquecer el HITL sin romper estabilidad.
+- Mejoras de diseño y equilibrio del loop RPG (progresión, tienda, economía).
+- Publicación y QA de VSIX (instalación limpia, dependencias correctas y CSP robusto).
 
 ---
 

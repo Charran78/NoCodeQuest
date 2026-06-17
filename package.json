@@ -2,7 +2,7 @@
   "name": "nocodequest",
   "displayName": "NoCodeQuest ⚔️ RPG",
   "description": "Transforma tu entorno de desarrollo en una aventura gráfica de rol medieval. Combate bugs, sube de nivel y escucha al bardo Jasper narrar tu código.",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "publisher": "pedromencias",
   "repository": {
     "type": "git",

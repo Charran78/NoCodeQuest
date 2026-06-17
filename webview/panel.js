@@ -105,6 +105,46 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri,
       overflow: hidden;
     }
     #phaser-container canvas { display: block; }
+    #view-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      gap: 6px;
+      z-index: 30;
+      background: rgba(13, 22, 38, 0.70);
+      border: 1px solid rgba(30, 58, 95, 0.85);
+      border-radius: 8px;
+      padding: 6px;
+      backdrop-filter: blur(4px);
+    }
+    .view-btn {
+      width: 30px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 212, 255, 0.10);
+      border: 1px solid rgba(0, 212, 255, 0.35);
+      color: var(--cyan);
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 12px;
+      line-height: 1;
+    }
+    .view-btn:hover { background: rgba(0, 212, 255, 0.22); }
+    .view-btn.active {
+      background: rgba(255, 215, 0, 0.12);
+      border-color: rgba(255, 215, 0, 0.45);
+      color: var(--gold);
+    }
+    body.layout-theater #side-panel { display: none; }
+    body.layout-zen #hud-top,
+    body.layout-zen #boss-bar,
+    body.layout-zen #speech-area,
+    body.layout-zen #action-bar { display: none; }
+    body.layout-zen #center-layout { height: 100vh; }
 
     /* ── Notificación de victoria/nivel flotante ─── */
     #floating-message {
@@ -151,6 +191,9 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri,
     }
     .side-tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
     .side-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+    .side-tab.hitl-ping {
+      animation: hitlTabPing 0.9s ease;
+    }
 
     .tab-content { display: none; flex: 1; overflow-y: auto; padding: 6px; }
     .tab-content.active { display: block; }
@@ -485,6 +528,11 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri,
       display: none;
       overflow: hidden;
     }
+    #chat-overlay.hitl-glow {
+      border-color: rgba(0, 212, 255, 0.75);
+      box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.22), 0 10px 28px rgba(0,0,0,0.3);
+      animation: hitlGlowPulse 0.9s ease;
+    }
     #chat-overlay.active { display: block; }
     #chat-header {
       display: flex;
@@ -506,6 +554,16 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri,
       cursor: pointer;
       font-family: var(--font);
       font-size: 10px;
+    }
+    #chat-export {
+      background: transparent;
+      border: none;
+      color: var(--cyan);
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 10px;
+      margin-left: auto;
+      margin-right: 6px;
     }
     #chat-history {
       max-height: 220px;
@@ -534,6 +592,49 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri,
       border: 1px solid rgba(255, 215, 0, 0.22);
       color: var(--text);
       align-self: stretch;
+    }
+    .chat-suggestion {
+      background: rgba(0, 212, 255, 0.07);
+      border: 1px solid rgba(0, 212, 255, 0.22);
+      border-radius: 6px;
+      padding: 7px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .chat-suggestion.used {
+      opacity: 0.72;
+    }
+    .chat-suggestion-title {
+      color: var(--cyan);
+      font-size: 9px;
+      font-weight: bold;
+    }
+    .chat-suggestion-reason {
+      color: var(--text);
+      font-size: 9px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .chat-suggestion-meta {
+      color: var(--text-dim);
+      font-size: 8px;
+      line-height: 1.35;
+    }
+    .chat-suggestion-btn {
+      background: rgba(0,212,255,0.10);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      border-radius: 4px;
+      padding: 5px 7px;
+      font-family: var(--font);
+      font-size: 8px;
+      cursor: pointer;
+      align-self: flex-start;
+    }
+    .chat-suggestion-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
     #chat-input-row {
       display: flex;
@@ -716,6 +817,16 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri,
       from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
       to   { opacity: 1; transform: translateX(-50%) translateY(0); }
     }
+    @keyframes hitlTabPing {
+      0%   { filter: brightness(1); }
+      35%  { filter: brightness(1.8); }
+      100% { filter: brightness(1); }
+    }
+    @keyframes hitlGlowPulse {
+      0%   { box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.10), 0 8px 24px rgba(0,0,0,0.3); }
+      45%  { box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.35), 0 8px 24px rgba(0,0,0,0.3); }
+      100% { box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.18), 0 8px 24px rgba(0,0,0,0.3); }
+    }
     .level-up-anim { animation: flash-gold 0.3s ease 3; }
     .boss-mode { animation: pulse-red 1.5s infinite; }
   </style>
@@ -755,9 +866,16 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri,
   <!-- Canvas de Phaser -->
   <div id="phaser-container" style="position:relative;">
     <div id="floating-message"></div>
+    <div id="view-controls">
+      <button id="btn-move-main" class="view-btn" title="Mover a columna principal">↖</button>
+      <button id="btn-max-group" class="view-btn" title="Maximizar grupo del editor">⛶</button>
+      <button id="btn-theater" class="view-btn" title="Modo teatro (oculta panel lateral)">▭</button>
+      <button id="btn-zen" class="view-btn" title="Modo zen (solo escena)">◐</button>
+    </div>
     <div id="chat-overlay">
       <div id="chat-header">
         <div id="chat-title">💬 Consejo de Jasper</div>
+        <button id="chat-export" title="Exportar chat">⤓</button>
         <button id="chat-close" title="Cerrar chat">✕</button>
       </div>
       <div id="chat-history">
@@ -916,11 +1034,30 @@ let currentAdventureCards = [];
 let currentChronicleEntries = [];
 let selectedChronicleEntry = null;
 let pendingCommitCardId = null;
+const currentChatSuggestions = new Map();
+let lastAiModel = null;
 // #region debug-point A:webview-bootstrap
-const __dbg=(h,l,m,d)=>fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"webview-black-screen",runId:"pre-fix",hypothesisId:h,location:l,msg:"[DEBUG] "+m,data:d||{},ts:Date.now()})}).catch(()=>{});
-window.addEventListener('error',(e)=>__dbg('A','panel.js:bootstrap','window-error',{message:e.message,source:e.filename,line:e.lineno,column:e.colno,stack:e.error?.stack||null}));
-window.addEventListener('unhandledrejection',(e)=>__dbg('A','panel.js:bootstrap','unhandled-rejection',{reason:String(e.reason),stack:e.reason?.stack||null}));
-__dbg('A','panel.js:bootstrap','script-evaluated',{hasChatInput:!!document.getElementById('chat-input'),hasPhaserContainer:!!document.getElementById('phaser-container')});
+const DEBUG_WEBVIEW = false;
+const __dbg = DEBUG_WEBVIEW
+    ? (h, l, m, d) => fetch("http://127.0.0.1:7777/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            sessionId: "webview-black-screen",
+            runId: "pre-fix",
+            hypothesisId: h,
+            location: l,
+            msg: "[DEBUG] " + m,
+            data: d || {},
+            ts: Date.now()
+        })
+    }).catch(() => { })
+    : () => { };
+if (DEBUG_WEBVIEW) {
+    window.addEventListener('error', (e) => __dbg('A', 'panel.js:bootstrap', 'window-error', { message: e.message, source: e.filename, line: e.lineno, column: e.colno, stack: e.error?.stack || null }));
+    window.addEventListener('unhandledrejection', (e) => __dbg('A', 'panel.js:bootstrap', 'unhandled-rejection', { reason: String(e.reason), stack: e.reason?.stack || null }));
+    __dbg('A', 'panel.js:bootstrap', 'script-evaluated', { hasChatInput: !!document.getElementById('chat-input'), hasPhaserContainer: !!document.getElementById('phaser-container') });
+}
 // #endregion
 
 // ─── Carga manual de imágenes (evita el loader nativo y sus restricciones) ──
@@ -1555,6 +1692,64 @@ function renderChatMessage(role, text) {
     history.appendChild(bubble);
     history.scrollTop = history.scrollHeight;
 }
+function renderChatSuggestion(suggestion) {
+    if (!suggestion?.id) return;
+
+    currentChatSuggestions.set(suggestion.id, suggestion);
+
+    const history = document.getElementById('chat-history');
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chat-suggestion';
+    wrapper.setAttribute('data-chat-suggestion-id', suggestion.id);
+
+    const title = document.createElement('div');
+    title.className = 'chat-suggestion-title';
+    title.textContent = 'HITL de Jasper: ' + (suggestion.title || 'Siguiente paso recomendado');
+
+    const reason = document.createElement('div');
+    reason.className = 'chat-suggestion-reason';
+    reason.textContent = suggestion.reason || 'Jasper sugiere actuar según el estado actual del IDE.';
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-suggestion-meta';
+    meta.textContent = 'Acción: ' + (suggestion.recommended_action || 'sin definir')
+      + (suggestion.requires_confirmation ? ' | Requiere confirmación' : ' | Ejecutable desde el chat')
+      + (lastAiModel ? ' | Modelo: ' + lastAiModel : '');
+
+    const button = document.createElement('button');
+    button.className = 'chat-suggestion-btn';
+    button.setAttribute('data-chat-suggestion-btn', suggestion.id);
+    button.textContent = suggestion.cta_label || 'Ejecutar sugerencia';
+
+    wrapper.appendChild(title);
+    wrapper.appendChild(reason);
+    wrapper.appendChild(meta);
+    wrapper.appendChild(button);
+    history.appendChild(wrapper);
+    history.scrollTop = history.scrollHeight;
+}
+function pulseChatOverlay() {
+    const overlay = document.getElementById('chat-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('hitl-glow');
+    overlay.offsetHeight;
+    overlay.classList.add('hitl-glow');
+    setTimeout(() => overlay.classList.remove('hitl-glow'), 950);
+}
+function markChatSuggestionUsed(suggestionId) {
+    const wrapper = document.querySelector('[data-chat-suggestion-id="' + suggestionId + '"]');
+    if (!wrapper) return;
+    wrapper.classList.add('used');
+    const button = wrapper.querySelector('[data-chat-suggestion-btn]');
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Ritual enviado';
+    }
+}
+function hitlToast(text, color = '#00d4ff') {
+    pulseChatOverlay();
+    showFloatingMessage(text, 2000, color);
+}
 function toggleChat(forceOpen) {
     const overlay = document.getElementById('chat-overlay');
     const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !overlay.classList.contains('active');
@@ -1562,6 +1757,28 @@ function toggleChat(forceOpen) {
     if (shouldOpen) {
         document.getElementById('chat-input').focus();
     }
+}
+function setViewButtonActive(btnId, active) {
+    const el = document.getElementById(btnId);
+    if (!el) return;
+    el.classList.toggle('active', !!active);
+}
+function toggleTheaterMode() {
+    document.body.classList.toggle('layout-theater');
+    setViewButtonActive('btn-theater', document.body.classList.contains('layout-theater'));
+}
+function toggleZenLayout() {
+    document.body.classList.toggle('layout-zen');
+    setViewButtonActive('btn-zen', document.body.classList.contains('layout-zen'));
+}
+function requestMoveToMainColumn() {
+    vscode.postMessage({ command: 'moveToColumnOne' });
+}
+function toggleMaximizeEditorGroup() {
+    vscode.postMessage({ command: 'toggleMaximizeEditorGroup' });
+}
+function toggleZenMode() {
+    vscode.postMessage({ command: 'toggleZenMode' });
 }
 function showCommitModal(payload) {
     pendingCommitCardId = payload?.cardId || null;
@@ -1594,6 +1811,17 @@ function submitChatMessage() {
     input.value = '';
     vscode.postMessage({ command: 'chatMessage', text });
 }
+function exportChatTranscript() {
+    vscode.postMessage({ command: 'exportChatTranscript' });
+}
+function executeChatSuggestion(suggestionId) {
+    const suggestion = currentChatSuggestions.get(suggestionId);
+    if (!suggestion) return;
+    vscode.postMessage({
+      command: 'executeStructuredSuggestion',
+      suggestion
+    });
+}
 function highlightAdventureCard(cardId) {
     switchTab('destiny');
     document.querySelectorAll('.adventure-card').forEach(card => {
@@ -1622,9 +1850,40 @@ function switchTab(name) {
         closeChronicleModal();
     }
 }
+function preselectAdventureCard(cardId) {
+    if (!cardId) return;
+    document.querySelectorAll('.adventure-card').forEach(card => {
+        card.classList.toggle('selected', card.getAttribute('data-card-id') === cardId);
+    });
+}
+function nudgeDestinyTab() {
+    const tab = document.querySelector('.side-tab[data-tab="destiny"]');
+    if (!tab) return;
+    tab.classList.remove('hitl-ping');
+    tab.offsetHeight;
+    tab.classList.add('hitl-ping');
+    setTimeout(() => tab.classList.remove('hitl-ping'), 950);
+}
 
 // ── DELEGACIÓN DE EVENTOS ──────────────────────────────────────────────
 document.addEventListener('click', (e) => {
+    if (e.target.closest('#btn-move-main')) {
+        requestMoveToMainColumn();
+        return;
+    }
+    if (e.target.closest('#btn-max-group')) {
+        toggleMaximizeEditorGroup();
+        return;
+    }
+    if (e.target.closest('#btn-theater')) {
+        toggleTheaterMode();
+        return;
+    }
+    if (e.target.closest('#btn-zen')) {
+        toggleZenLayout();
+        toggleZenMode();
+        return;
+    }
     const target = e.target.closest('[data-tab]');
     if (target) {
         const tab = target.getAttribute('data-tab');
@@ -1699,6 +1958,16 @@ document.addEventListener('click', (e) => {
         toggleChat(false);
         return;
     }
+    if (e.target.closest('#chat-export')) {
+        exportChatTranscript();
+        return;
+    }
+    const chatSuggestionBtn = e.target.closest('.chat-suggestion-btn');
+    if (chatSuggestionBtn) {
+        const suggestionId = chatSuggestionBtn.getAttribute('data-chat-suggestion-btn');
+        if (suggestionId) executeChatSuggestion(suggestionId);
+        return;
+    }
     const cardBtn = e.target.closest('.btn-card-action, .adventure-card');
     if (cardBtn) {
         const cardId = cardBtn.getAttribute('data-card-id');
@@ -1771,7 +2040,12 @@ window.addEventListener('message', (event) => {
             break;
         case 'chatResponse':
             toggleChat(true);
+            lastAiModel = data.aiModel || null;
             renderChatMessage('bard', data.text || '');
+            if (data.suggestion) {
+                renderChatSuggestion(data.suggestion);
+                pulseChatOverlay();
+            }
             break;
         case 'levelUpVisual':
             levelUpEffect(data.level, data.rank || '');
@@ -1846,6 +2120,16 @@ window.addEventListener('message', (event) => {
             break;
         case 'hideCommitModal':
             hideCommitModal();
+            break;
+        case 'markChatSuggestionUsed':
+            if (data.suggestionId) markChatSuggestionUsed(data.suggestionId);
+            break;
+        case 'hitlToast':
+            if (data.text) hitlToast(data.text, data.color || '#00d4ff');
+            break;
+        case 'hitlNudge':
+            if (data.cardId) preselectAdventureCard(data.cardId);
+            nudgeDestinyTab();
             break;
     }
 });

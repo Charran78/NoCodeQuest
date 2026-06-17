@@ -1,0 +1,42 @@
+{
+  "player": {
+    "name": "Aventurero",
+    "level": 1,
+    "exp": 0,
+    "gold": 50,
+    "equipped": {
+      "skin": "mono_fabrica",
+      "weapon": "martillo_refactor"
+    }
+  },
+  "inventory": {
+    "weapons": [
+      "martillo_refactor"
+    ],
+    "skins": [
+      "mono_fabrica"
+    ],
+    "scrolls": {
+      "pergamino_estabilidad": 1
+    },
+    "potions": {
+      "pocion_cafe": 0
+    }
+  },
+  "badges": [],
+  "lair": {
+    "decorations": [
+      "planta_buen_codigo"
+    ],
+    "technical_debt_level": 0
+  },
+  "acceptedQuests": [],
+  "adventureLog": [],
+  "stats": {
+    "bugsDefeated": 0,
+    "commitsTotal": 0,
+    "questsCompleted": 0,
+    "bossesDefeated": 0,
+    "linesAnalyzed": 0
+  }
+}
