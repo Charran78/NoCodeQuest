@@ -50,6 +50,7 @@ class QuestBoard {
                         description,
                         line: index,
                         fileName: doc.fileName.split(/[\\/]/).pop(),
+                        filePath: doc.fileName,
                         rewardExp: pattern.rewardExp,
                         rewardGold: pattern.rewardGold
                     });

@@ -5,10 +5,11 @@
  * Carga de assets 100% manual para evitar problemas de crossOrigin en WebView.
  */
 
-module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri) {
+module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri, phaserUri) {
     const heroUriSafe    = JSON.stringify(heroUri);
     const bugUriSafe     = JSON.stringify(bugUri);
     const dungeonUriSafe = JSON.stringify(dungeonUri);
+    const phaserUriSafe  = JSON.stringify(phaserUri);
 
     return `<!DOCTYPE html>
 <html lang="es">
@@ -17,7 +18,7 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri)
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <title>⚔️ NoCodeQuest</title>
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.0/dist/phaser.min.js"></script>
+  <script nonce="${nonce}" src=${phaserUriSafe}></script>
   <style>
     :root {
       --bg:         #0d1117;
@@ -178,13 +179,389 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri)
       margin-bottom: 5px;
       cursor: default;
     }
+    .quest-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 4px;
+    }
     .quest-type { font-weight: bold; font-size: 9px; }
     .quest-type.TODO  { color: var(--cyan); }
     .quest-type.FIXME { color: var(--red); }
     .quest-type.HACK  { color: var(--orange); }
     .quest-desc { color: var(--text); font-size: 9px; margin: 2px 0; word-break: break-word; }
     .quest-reward { color: var(--green); font-size: 8px; }
+    .quest-status { color: var(--gold); font-size: 8px; }
+    .btn-quest-accept {
+      background: rgba(0, 212, 255, 0.1);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-size: 8px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: var(--font);
+      white-space: nowrap;
+    }
+    .btn-quest-accept:hover { background: rgba(0, 212, 255, 0.24); }
+    .btn-quest-accept:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
     .no-quests { color: var(--text-dim); font-size: 9px; text-align: center; padding: 10px; font-style: italic; }
+
+    /* ── Cartas de Destino ────────────────────────── */
+    .adventure-card {
+      background: linear-gradient(180deg, rgba(255, 215, 0, 0.08), rgba(30, 58, 95, 0.22));
+      border: 1px solid rgba(255, 215, 0, 0.28);
+      border-radius: 6px;
+      padding: 7px;
+      margin-bottom: 7px;
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .adventure-card:hover {
+      transform: translateY(-1px);
+      border-color: var(--gold);
+      background: linear-gradient(180deg, rgba(255, 215, 0, 0.14), rgba(30, 58, 95, 0.32));
+    }
+    .adventure-card.selected {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.35);
+    }
+    .adventure-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .adventure-card-title {
+      color: var(--gold);
+      font-size: 10px;
+      font-weight: bold;
+      line-height: 1.35;
+    }
+    .adventure-card-priority {
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      white-space: nowrap;
+    }
+    .priority-critical { color: var(--red); }
+    .priority-high { color: var(--orange); }
+    .priority-medium { color: var(--cyan); }
+    .priority-low, .priority-optional { color: var(--text-dim); }
+    .adventure-card-desc {
+      color: var(--text);
+      font-size: 9px;
+      line-height: 1.4;
+      margin-bottom: 5px;
+    }
+    .adventure-card-meta {
+      color: var(--text-dim);
+      font-size: 8px;
+      line-height: 1.4;
+      margin-bottom: 6px;
+    }
+    .btn-card-action {
+      width: 100%;
+      background: rgba(0, 212, 255, 0.1);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-size: 8px;
+      padding: 4px 6px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: var(--font);
+      transition: all 0.2s;
+    }
+    .btn-card-action:hover { background: rgba(0, 212, 255, 0.24); }
+    .no-cards {
+      color: var(--text-dim);
+      font-size: 9px;
+      text-align: center;
+      padding: 12px 8px;
+      font-style: italic;
+      line-height: 1.5;
+    }
+
+    /* ── Crónica ──────────────────────────────────── */
+    .chronicle-entry {
+      background: linear-gradient(180deg, rgba(255, 248, 220, 0.08), rgba(80, 60, 25, 0.16));
+      border: 1px solid rgba(255, 215, 0, 0.22);
+      border-radius: 6px;
+      padding: 7px;
+      margin-bottom: 7px;
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .chronicle-entry:hover {
+      transform: translateY(-1px);
+      border-color: var(--gold);
+    }
+    .chronicle-entry-title {
+      color: var(--gold);
+      font-size: 10px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    .chronicle-entry-date {
+      color: var(--text-dim);
+      font-size: 8px;
+      margin-bottom: 4px;
+    }
+    .chronicle-entry-text {
+      color: var(--text);
+      font-size: 9px;
+      line-height: 1.45;
+    }
+    .no-chronicle {
+      color: var(--text-dim);
+      font-size: 9px;
+      text-align: center;
+      padding: 12px 8px;
+      font-style: italic;
+      line-height: 1.5;
+    }
+    #chronicle-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 18px;
+    }
+    #chronicle-modal.active { display: flex; }
+    #chronicle-modal-card {
+      width: min(520px, 100%);
+      max-height: 80vh;
+      overflow-y: auto;
+      background: linear-gradient(180deg, rgba(20, 17, 10, 0.98), rgba(35, 24, 14, 0.98));
+      border: 1px solid rgba(255, 215, 0, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    #chronicle-modal-title {
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    #chronicle-modal-date {
+      color: var(--text-dim);
+      font-size: 9px;
+      margin-bottom: 8px;
+    }
+    #chronicle-modal-text {
+      color: var(--text);
+      font-size: 10px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      margin-bottom: 10px;
+    }
+    #chronicle-modal-meta {
+      color: var(--text-dim);
+      font-size: 9px;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+    #chronicle-modal-close {
+      width: 100%;
+      background: rgba(0, 212, 255, 0.1);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-size: 9px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font);
+    }
+    #chronicle-export-btn {
+      width: 100%;
+      background: rgba(155,89,182,0.15);
+      border: 1px solid var(--purple);
+      color: var(--purple);
+      font-size: 9px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font);
+      margin-bottom: 8px;
+    }
+    #chronicle-export-btn[hidden] { display: none; }
+
+    /* ── Modal de Commit ──────────────────────────── */
+    #commit-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 60;
+      padding: 18px;
+    }
+    #commit-modal.active { display: flex; }
+    #commit-modal-card {
+      width: min(520px, 100%);
+      background: linear-gradient(180deg, rgba(20, 17, 10, 0.98), rgba(35, 24, 14, 0.98));
+      border: 1px solid rgba(255, 215, 0, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    #commit-modal-title {
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    #commit-modal-subtitle {
+      color: var(--text-dim);
+      font-size: 9px;
+      line-height: 1.45;
+      margin-bottom: 8px;
+    }
+    #commit-changed-files {
+      color: var(--cyan);
+      font-size: 8px;
+      line-height: 1.45;
+      margin-bottom: 8px;
+      min-height: 16px;
+    }
+    #commit-message-input {
+      width: 100%;
+      min-height: 96px;
+      resize: vertical;
+      background: rgba(13,17,23,0.85);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px;
+      font-family: var(--font);
+      font-size: 10px;
+      margin-bottom: 10px;
+    }
+    #commit-modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .modal-btn {
+      flex: 1;
+      padding: 7px 8px;
+      border-radius: 4px;
+      font-family: var(--font);
+      font-size: 9px;
+      cursor: pointer;
+      border: 1px solid;
+    }
+    #commit-confirm-btn {
+      background: rgba(255,215,0,0.12);
+      border-color: var(--gold);
+      color: var(--gold);
+    }
+    #commit-cancel-btn {
+      background: rgba(0,212,255,0.1);
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+
+    /* ── Chat Overlay ─────────────────────────────── */
+    #chat-overlay {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      width: 320px;
+      max-width: calc(100% - 20px);
+      background: rgba(13, 22, 38, 0.94);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      z-index: 25;
+      display: none;
+      overflow: hidden;
+    }
+    #chat-overlay.active { display: block; }
+    #chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 8px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+    }
+    #chat-title {
+      color: var(--gold);
+      font-size: 10px;
+      font-weight: bold;
+    }
+    #chat-close {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 10px;
+    }
+    #chat-history {
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .chat-bubble {
+      padding: 7px 8px;
+      border-radius: 6px;
+      font-size: 9px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chat-bubble.user {
+      background: rgba(0, 212, 255, 0.10);
+      border: 1px solid rgba(0, 212, 255, 0.30);
+      color: var(--cyan);
+      align-self: flex-end;
+    }
+    .chat-bubble.bard {
+      background: rgba(255, 215, 0, 0.08);
+      border: 1px solid rgba(255, 215, 0, 0.22);
+      color: var(--text);
+      align-self: stretch;
+    }
+    #chat-input-row {
+      display: flex;
+      gap: 6px;
+      padding: 8px;
+      border-top: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+    #chat-input {
+      flex: 1;
+      background: rgba(13,17,23,0.85);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 6px 7px;
+      font-family: var(--font);
+      font-size: 9px;
+    }
+    #chat-send {
+      background: rgba(0,212,255,0.10);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-family: var(--font);
+      font-size: 9px;
+      cursor: pointer;
+    }
 
     /* ── Tienda ───────────────────────────────────── */
     .shop-item {
@@ -301,6 +678,8 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri)
     #btn-attack  { background: rgba(255,68,68,0.15); border-color: var(--red); color: var(--red); }
     #btn-coffee  { background: rgba(255,136,0,0.15); border-color: var(--orange); color: var(--orange); }
     #btn-scroll  { background: rgba(0,212,255,0.1); border-color: var(--cyan); color: var(--cyan); }
+    #btn-commit  { background: rgba(255,215,0,0.12); border-color: var(--gold); color: var(--gold); }
+    #btn-chat    { background: rgba(0,212,255,0.10); border-color: var(--cyan); color: var(--cyan); }
     #btn-snapshot{ background: rgba(155,89,182,0.15); border-color: var(--purple); color: var(--purple); }
 
     /* ── Boss HP Bar ──────────────────────────────── */
@@ -376,20 +755,47 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri)
   <!-- Canvas de Phaser -->
   <div id="phaser-container" style="position:relative;">
     <div id="floating-message"></div>
+    <div id="chat-overlay">
+      <div id="chat-header">
+        <div id="chat-title">💬 Consejo de Jasper</div>
+        <button id="chat-close" title="Cerrar chat">✕</button>
+      </div>
+      <div id="chat-history">
+        <div class="chat-bubble bard">🎵 Estoy listo para murmurar estrategias desde la sombra del calabozo.</div>
+      </div>
+      <div id="chat-input-row">
+        <input id="chat-input" type="text" maxlength="280" placeholder="Pregunta al bardo..." />
+        <button id="chat-send">Enviar</button>
+      </div>
+    </div>
   </div>
 
   <!-- Panel lateral derecho -->
   <div id="side-panel">
     <div id="side-tabs">
-      <button class="side-tab active" data-tab="quests">📌 Quests</button>
+      <button class="side-tab active" data-tab="destiny">🪞 Destino</button>
+      <button class="side-tab" data-tab="quests">📌 Quests</button>
+      <button class="side-tab" data-tab="chronicle">📜 Crónica</button>
       <button class="side-tab" data-tab="shop">🛒 Mercado</button>
       <button class="side-tab" data-tab="arsenal">🛡️ Arsenal</button>
     </div>
 
+    <div id="tab-destiny" class="tab-content active">
+      <div class="section-title">🪞 Cartas de Destino</div>
+      <div id="adventure-cards-list">
+        <p class="no-cards">El Oráculo aún guarda silencio.<br>Espera a que el IDE revele una nueva decisión.</p>
+      </div>
+    </div>
+
     <!-- Tab: Tablón de Misiones -->
-    <div id="tab-quests" class="tab-content active">
+    <div id="tab-quests" class="tab-content">
       <div class="section-title">📌 Tablón de Anuncios</div>
       <div id="quests-list"><p class="no-quests">No hay misiones activas.<br>Añade un // TODO: en tu código.</p></div>
+    </div>
+
+    <div id="tab-chronicle" class="tab-content">
+      <div class="section-title">📜 Crónica del Reino</div>
+      <div id="chronicle-list"><p class="no-chronicle">Todavía no hay hazañas inscritas.<br>Sal a buscar gloria en el IDE.</p></div>
     </div>
 
     <!-- Tab: Mercado del Gremio -->
@@ -444,9 +850,33 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri)
   </div>
 </div>
 
+<div id="chronicle-modal">
+  <div id="chronicle-modal-card">
+    <div id="chronicle-modal-title">📜 Hazaña</div>
+    <div id="chronicle-modal-date"></div>
+    <div id="chronicle-modal-text"></div>
+    <div id="chronicle-modal-meta"></div>
+    <button id="chronicle-export-btn" hidden>🖼️ Exportar Crónica</button>
+    <button id="chronicle-modal-close">Cerrar pergamino</button>
+  </div>
+</div>
+
+<div id="commit-modal">
+  <div id="commit-modal-card">
+    <div id="commit-modal-title">🔒 Sello Real</div>
+    <div id="commit-modal-subtitle">Jasper propone un mensaje para las crónicas. Puedes pulirlo antes de sellar la partida.</div>
+    <div id="commit-changed-files"></div>
+    <textarea id="commit-message-input" spellcheck="false"></textarea>
+    <div id="commit-modal-actions">
+      <button id="commit-confirm-btn" class="modal-btn">Sellar Commit</button>
+      <button id="commit-cancel-btn" class="modal-btn">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ╔═ SPEECH BUBBLE (JASKIER) ══════════════════════╗ -->
 <div id="speech-area">
-  <div id="speech-label">🎵 Jaskier el Bardo dice:</div>
+  <div id="speech-label">🎵 Jasper el Bardo dice:</div>
   <div id="speech-text">⚔️ Explorando las catacumbas del directorio raíz... El camino está despejado, Aventurero.</div>
 </div>
 
@@ -455,6 +885,8 @@ module.exports = function generatePanel(nonce, csp, heroUri, bugUri, dungeonUri)
   <button id="btn-attack"   class="action-btn">⚔️ Atacar</button>
   <button id="btn-coffee"   class="action-btn">☕ Café</button>
   <button id="btn-scroll"   class="action-btn">📜 Pergamino</button>
+  <button id="btn-commit"   class="action-btn">🔒 Commit</button>
+  <button id="btn-chat"     class="action-btn">💬 Chat</button>
   <button id="btn-snapshot" class="action-btn">📸 Gesta</button>
 </div>
 
@@ -480,6 +912,16 @@ let bgImage;
 let assetsLoaded = false;
 let enemyVisible = false;
 let bossHeads = 0;
+let currentAdventureCards = [];
+let currentChronicleEntries = [];
+let selectedChronicleEntry = null;
+let pendingCommitCardId = null;
+// #region debug-point A:webview-bootstrap
+const __dbg=(h,l,m,d)=>fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"webview-black-screen",runId:"pre-fix",hypothesisId:h,location:l,msg:"[DEBUG] "+m,data:d||{},ts:Date.now()})}).catch(()=>{});
+window.addEventListener('error',(e)=>__dbg('A','panel.js:bootstrap','window-error',{message:e.message,source:e.filename,line:e.lineno,column:e.colno,stack:e.error?.stack||null}));
+window.addEventListener('unhandledrejection',(e)=>__dbg('A','panel.js:bootstrap','unhandled-rejection',{reason:String(e.reason),stack:e.reason?.stack||null}));
+__dbg('A','panel.js:bootstrap','script-evaluated',{hasChatInput:!!document.getElementById('chat-input'),hasPhaserContainer:!!document.getElementById('phaser-container')});
+// #endregion
 
 // ─── Carga manual de imágenes (evita el loader nativo y sus restricciones) ──
 function loadImage(url) {
@@ -495,6 +937,9 @@ function loadImage(url) {
 let loadedDungeon, loadedHero, loadedBug;
 
 function startGame() {
+    // #region debug-point B:startGame
+    __dbg('B','panel.js:startGame','start-game-enter',{hasLoadedDungeon:!!loadedDungeon,hasLoadedHero:!!loadedHero,hasLoadedBug:!!loadedBug,containerExists:!!document.getElementById('phaser-container')});
+    // #endregion
     console.log('[NoCodeQuest] Iniciando Phaser con texturas precargadas...');
 
     const config = {
@@ -512,9 +957,15 @@ function startGame() {
     };
 
     game = new Phaser.Game(config);
+    // #region debug-point B:startGame
+    __dbg('B','panel.js:startGame','phaser-game-created',{gameCreated:!!game});
+    // #endregion
 }
 
 function createScene() {
+    // #region debug-point C:createScene
+    __dbg('C','panel.js:createScene','create-scene-enter',{});
+    // #endregion
     scene = this;
     assetsLoaded = true;
 
@@ -581,6 +1032,9 @@ function createScene() {
         }).setOrigin(0.5);
 
     } catch (err) {
+        // #region debug-point C:createScene
+        __dbg('C','panel.js:createScene','create-scene-catch',{message:err.message,stack:err.stack||null});
+        // #endregion
         console.error('[NoCodeQuest] Error en createScene:', err);
     }
 
@@ -603,6 +1057,10 @@ function createScene() {
         // 3. Activamos las animaciones en los personajes
         heroPawn.play('hero_anim');
         bugPawn.play('bug_anim');
+
+        // #region debug-point C:createScene
+        __dbg('C','panel.js:createScene','create-scene-complete',{heroVisible:!!heroPawn,bugVisible:!!bugPawn,assetsLoaded});
+        // #endregion
 
 }
 
@@ -877,6 +1335,7 @@ function renderInventory(state) {
     const emoji = chaos === 0 ? '🌿' : chaos < 10 ? '🌱' : chaos < 20 ? '🍂' : '🥀';
     document.getElementById('plant-indicator').textContent = emoji;
     document.getElementById('plant-indicator').title = 'Caos del código: ' + chaos;
+    renderChronicle(state.adventureLog || []);
 }
 function renderQuestBoard(quests) {
     const list = document.getElementById('quests-list');
@@ -884,16 +1343,265 @@ function renderQuestBoard(quests) {
         list.innerHTML = '<p class="no-quests">No hay misiones activas.<br>Añade un // TODO: en tu código.</p>';
         return;
     }
+    const acceptedIds = new Set((gameState?.acceptedQuests || []).map(q => q.id));
     list.innerHTML = quests.map(q =>
       '<div class="quest-item">' +
-        '<div class="quest-type ' + q.type + '">' + q.title + '</div>' +
+        '<div class="quest-item-header">' +
+          '<div class="quest-type ' + q.type + '">' + q.title + '</div>' +
+          (acceptedIds.has(q.id)
+            ? '<span class="quest-status">Juramentada</span>'
+            : '<button class="btn-quest-accept" data-quest-id="' + escHtml(q.id) + '">Aceptar</button>') +
+        '</div>' +
         '<div class="quest-desc">' + escHtml(q.description) + '</div>' +
         '<div class="quest-reward">💎 +' + q.rewardExp + ' EXP | 🪙 +' + q.rewardGold + ' G</div>' +
       '</div>'
     ).join('');
 }
+function renderAdventureCards(cards) {
+    currentAdventureCards = Array.isArray(cards) ? cards : [];
+    const list = document.getElementById('adventure-cards-list');
+    if (!currentAdventureCards.length) {
+        list.innerHTML = '<p class="no-cards">El Oráculo no detecta decisiones urgentes.<br>El reino está en relativa calma.</p>';
+        return;
+    }
+
+    list.innerHTML = currentAdventureCards.map(card =>
+      '<div class="adventure-card" data-card-id="' + escHtml(card.id) + '">' +
+        '<div class="adventure-card-header">' +
+          '<div class="adventure-card-title">' + escHtml(card.title || 'Carta sin título') + '</div>' +
+          '<div class="adventure-card-priority priority-' + escHtml(card.priority || 'optional') + '">' + escHtml(card.priority || 'optional') + '</div>' +
+        '</div>' +
+        '<div class="adventure-card-desc">' + escHtml(card.description || '') + '</div>' +
+        '<div class="adventure-card-meta">🎁 ' + escHtml(card.reward || 'Sin recompensa definida') + '<br>⚠️ ' + escHtml(card.risk || 'Sin riesgo aparente') + '</div>' +
+        '<button class="btn-card-action" data-card-id="' + escHtml(card.id) + '">Elegir este destino</button>' +
+      '</div>'
+    ).join('');
+}
+function removeAdventureCard(cardId) {
+    currentAdventureCards = currentAdventureCards.filter(card => card.id !== cardId);
+    renderAdventureCards(currentAdventureCards);
+}
+function renderChronicle(entries) {
+    currentChronicleEntries = Array.isArray(entries) ? entries : [];
+    const list = document.getElementById('chronicle-list');
+    if (!currentChronicleEntries.length) {
+        list.innerHTML = '<p class="no-chronicle">Todavía no hay hazañas inscritas.<br>Sal a buscar gloria en el IDE.</p>';
+        return;
+    }
+
+    list.innerHTML = currentChronicleEntries.map((entry, index) =>
+      '<div class="chronicle-entry" data-chronicle-index="' + index + '">' +
+        '<div class="chronicle-entry-title">' + escHtml(entry.title || 'Hazaña del Reino') + '</div>' +
+        '<div class="chronicle-entry-date">' + escHtml(formatChronicleDate(entry.recordedAt)) + '</div>' +
+        '<div class="chronicle-entry-text">' + escHtml(entry.chronicleText || entry.description || '') + '</div>' +
+      '</div>'
+    ).join('');
+}
+function openChronicleEntry(index) {
+    const entry = currentChronicleEntries[index];
+    if (!entry) return;
+    selectedChronicleEntry = entry;
+
+    document.getElementById('chronicle-modal-title').textContent = entry.title || 'Hazaña del Reino';
+    document.getElementById('chronicle-modal-date').textContent = formatChronicleDate(entry.recordedAt);
+    document.getElementById('chronicle-modal-text').textContent = entry.chronicleText || entry.description || 'Sin relato inscrito.';
+    document.getElementById('chronicle-modal-meta').innerHTML =
+      'Archivo: ' + escHtml(entry.targetFile || 'No especificado') + '<br>' +
+      'Línea: ' + escHtml(entry.targetLine != null ? String(entry.targetLine) : 'No especificada') + '<br>' +
+      'EXP: ' + escHtml(entry.rewardExp != null ? String(entry.rewardExp) : '0') + ' | Oro: ' + escHtml(entry.rewardGold != null ? String(entry.rewardGold) : '0');
+    document.getElementById('chronicle-export-btn').hidden = !canExportChronicle(entry);
+    document.getElementById('chronicle-modal').classList.add('active');
+}
+function closeChronicleModal() {
+    selectedChronicleEntry = null;
+    document.getElementById('chronicle-modal').classList.remove('active');
+}
+function formatChronicleDate(isoDate) {
+    if (!isoDate) return 'Fecha desconocida';
+    try {
+        return new Date(isoDate).toLocaleString('es-ES');
+    } catch (_) {
+        return isoDate;
+    }
+}
+function canExportChronicle(entry) {
+    if (!entry) return false;
+    return ['quest-completed', 'boss-defeated', 'commit'].includes(entry.type);
+}
+function exportSelectedChronicle() {
+    if (!selectedChronicleEntry || !canExportChronicle(selectedChronicleEntry)) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 1600;
+    const ctx = canvas.getContext('2d');
+
+    const bgGrad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    bgGrad.addColorStop(0, '#120b06');
+    bgGrad.addColorStop(1, '#24170e');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const panelGrad = ctx.createLinearGradient(0, 80, 0, canvas.height - 80);
+    panelGrad.addColorStop(0, '#2d2012');
+    panelGrad.addColorStop(1, '#1a130d');
+    ctx.fillStyle = panelGrad;
+    roundRect(ctx, 60, 60, canvas.width - 120, canvas.height - 120, 18, true, false);
+
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 5;
+    roundRect(ctx, 60, 60, canvas.width - 120, canvas.height - 120, 18, false, true);
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 48px Courier New';
+    ctx.fillText('NoCodeQuest - Badge Final de Campana', 110, 135);
+
+    ctx.strokeStyle = '#9b59b6';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(1020, 155, 62, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#9b59b6';
+    ctx.font = 'bold 28px Courier New';
+    ctx.fillText('JQ', 995, 166);
+
+    ctx.fillStyle = '#c9d1d9';
+    ctx.font = 'bold 38px Courier New';
+    wrapCanvasText(ctx, selectedChronicleEntry.title || 'Hazaña del Reino', 110, 235, 960, 46);
+
+    ctx.fillStyle = '#6e7681';
+    ctx.font = '26px Courier New';
+    ctx.fillText(formatChronicleDate(selectedChronicleEntry.recordedAt), 110, 320);
+
+    ctx.fillStyle = '#00d4ff';
+    ctx.font = 'bold 24px Courier New';
+    ctx.fillText('Hazana consagrada para compartir en las plazas del reino', 110, 380);
+
+    ctx.fillStyle = '#c9d1d9';
+    ctx.font = '30px Courier New';
+    wrapCanvasText(ctx, selectedChronicleEntry.chronicleText || selectedChronicleEntry.description || '', 110, 470, 960, 44);
+
+    ctx.fillStyle = '#00d4ff';
+    ctx.font = '24px Courier New';
+    wrapCanvasText(
+      ctx,
+      'Archivo: ' + (selectedChronicleEntry.targetFile || 'No especificado') +
+      ' | EXP: ' + (selectedChronicleEntry.rewardExp || 0) +
+      ' | Oro: ' + (selectedChronicleEntry.rewardGold || 0),
+      110, 1290, 960, 36
+    );
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 28px Courier New';
+    wrapCanvasText(ctx, 'Recompensa de Campana: La historia ha sido digna del laúd de Jasper.', 110, 1380, 960, 38);
+
+    ctx.fillStyle = '#9b59b6';
+    ctx.font = 'italic 24px Courier New';
+    wrapCanvasText(ctx, 'Jasper firma esta gesta para las plazas del reino.', 110, 1470, 960, 34);
+
+    vscode.postMessage({
+      command: 'saveAchievementImage',
+      base64Data: canvas.toDataURL('image/png'),
+      fileName: buildChronicleFileName(selectedChronicleEntry)
+    });
+}
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight) {
+    const words = String(text || '').split(/\s+/);
+    let line = '';
+    let currentY = y;
+
+    words.forEach((word) => {
+        const testLine = line ? line + ' ' + word : word;
+        if (ctx.measureText(testLine).width > maxWidth && line) {
+            ctx.fillText(line, x, currentY);
+            line = word;
+            currentY += lineHeight;
+        } else {
+            line = testLine;
+        }
+    });
+
+    if (line) {
+        ctx.fillText(line, x, currentY);
+    }
+}
+function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+}
+function buildChronicleFileName(entry) {
+    const title = String(entry?.title || 'cronica')
+      .toLowerCase()
+      .replace(/[^a-z0-9áéíóúñ]+/gi, '_')
+      .replace(/^_+|_+$/g, '');
+    return 'badge_final_' + (title || 'cronica') + '.png';
+}
+function renderChatMessage(role, text) {
+    const history = document.getElementById('chat-history');
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble ' + (role === 'user' ? 'user' : 'bard');
+    bubble.textContent = text;
+    history.appendChild(bubble);
+    history.scrollTop = history.scrollHeight;
+}
+function toggleChat(forceOpen) {
+    const overlay = document.getElementById('chat-overlay');
+    const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !overlay.classList.contains('active');
+    overlay.classList.toggle('active', shouldOpen);
+    if (shouldOpen) {
+        document.getElementById('chat-input').focus();
+    }
+}
+function showCommitModal(payload) {
+    pendingCommitCardId = payload?.cardId || null;
+    document.getElementById('commit-message-input').value = payload?.suggestedMessage || '';
+    document.getElementById('commit-changed-files').textContent = payload?.changedFiles?.length
+      ? 'Pergaminos tocados: ' + payload.changedFiles.join(', ')
+      : '';
+    document.getElementById('commit-modal').classList.add('active');
+    document.getElementById('commit-message-input').focus();
+    document.getElementById('commit-message-input').select();
+}
+function hideCommitModal() {
+    pendingCommitCardId = null;
+    document.getElementById('commit-modal').classList.remove('active');
+}
+function confirmCommit() {
+    const commitMessage = document.getElementById('commit-message-input').value.trim();
+    if (!commitMessage) return;
+    vscode.postMessage({
+      command: 'confirmCommitRequest',
+      commitMessage,
+      cardId: pendingCommitCardId
+    });
+}
+function submitChatMessage() {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    renderChatMessage('user', text);
+    input.value = '';
+    vscode.postMessage({ command: 'chatMessage', text });
+}
+function highlightAdventureCard(cardId) {
+    switchTab('destiny');
+    document.querySelectorAll('.adventure-card').forEach(card => {
+      card.classList.toggle('selected', card.getAttribute('data-card-id') === cardId);
+    });
+}
 function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function speak(text) {
     const el = document.getElementById('speech-text');
@@ -904,12 +1612,15 @@ function speak(text) {
     document.getElementById('speech-area').scrollTop = 0;
 }
 function switchTab(name) {
-    document.querySelectorAll('.side-tab').forEach((t,i) => {
-        t.classList.toggle('active', ['quests','shop','arsenal'][i] === name);
+    document.querySelectorAll('.side-tab').forEach((t) => {
+        t.classList.toggle('active', t.getAttribute('data-tab') === name);
     });
     document.querySelectorAll('.tab-content').forEach(c => {
         c.classList.toggle('active', c.id === 'tab-' + name);
     });
+    if (name !== 'chronicle') {
+        closeChronicleModal();
+    }
 }
 
 // ── DELEGACIÓN DE EVENTOS ──────────────────────────────────────────────
@@ -932,6 +1643,14 @@ document.addEventListener('click', (e) => {
         useScroll();
         return;
     }
+    if (e.target.closest('#btn-commit')) {
+        doCommit();
+        return;
+    }
+    if (e.target.closest('#btn-chat')) {
+        toggleChat();
+        return;
+    }
     if (e.target.closest('#btn-snapshot')) {
         takeSnapshot();
         return;
@@ -950,7 +1669,53 @@ document.addEventListener('click', (e) => {
         if (item && slot) doEquip(item, slot);
         return;
     }
+    const chronicleEntry = e.target.closest('.chronicle-entry');
+    if (chronicleEntry) {
+        const index = parseInt(chronicleEntry.getAttribute('data-chronicle-index'), 10);
+        if (!isNaN(index)) openChronicleEntry(index);
+        return;
+    }
+    if (e.target.closest('#chronicle-modal-close') || e.target.id === 'chronicle-modal') {
+        closeChronicleModal();
+        return;
+    }
+    if (e.target.closest('#commit-cancel-btn') || e.target.id === 'commit-modal') {
+        hideCommitModal();
+        return;
+    }
+    if (e.target.closest('#commit-confirm-btn')) {
+        confirmCommit();
+        return;
+    }
+    if (e.target.closest('#chronicle-export-btn')) {
+        exportSelectedChronicle();
+        return;
+    }
+    if (e.target.closest('#chat-send')) {
+        submitChatMessage();
+        return;
+    }
+    if (e.target.closest('#chat-close')) {
+        toggleChat(false);
+        return;
+    }
+    const cardBtn = e.target.closest('.btn-card-action, .adventure-card');
+    if (cardBtn) {
+        const cardId = cardBtn.getAttribute('data-card-id');
+        const card = currentAdventureCards.find(entry => entry.id === cardId);
+        if (card) chooseAdventureCard(card);
+        return;
+    }
+    const acceptBtn = e.target.closest('.btn-quest-accept');
+    if (acceptBtn) {
+        const questId = acceptBtn.getAttribute('data-quest-id');
+        if (questId) acceptQuest(questId);
+        return;
+    }
 });
+// #region debug-point D:bind-chat
+(()=>{const __chatInput=document.getElementById('chat-input');__dbg('D','panel.js:chat-bind','chat-input-bind-attempt',{found:!!__chatInput});if(__chatInput){__chatInput.addEventListener('keydown',(event)=>{if(event.key==='Enter'){event.preventDefault();submitChatMessage();}});}})();
+// #endregion
 
 function attackWithWeapon() {
     const weapon = gameState?.player?.equipped?.weapon || 'martillo_refactor';
@@ -963,16 +1728,26 @@ function useCoffee() {
 function useScroll() {
     vscode.postMessage({ command: 'triggerScrollEffect', scroll: 'pergamino_estabilidad' });
 }
+function doCommit() {
+    vscode.postMessage({ command: 'commitChangesRequest' });
+}
 function purchaseItem(itemId, price) {
     vscode.postMessage({ command: 'purchaseItem', itemId, price });
 }
 function doEquip(itemId, slotType) {
     vscode.postMessage({ command: 'equipItemRequest', itemId, slotType });
 }
+function acceptQuest(questId) {
+    vscode.postMessage({ command: 'acceptQuestRequest', questId });
+}
 function takeSnapshot() {
     game.renderer.snapshot((image) => {
         vscode.postMessage({ command: 'saveAchievementImage', base64Data: image.src });
     });
+}
+function chooseAdventureCard(card) {
+    highlightAdventureCard(card.id);
+    vscode.postMessage({ command: 'cardSelected', card });
 }
 
 // ── RECEPTOR DE MENSAJES DESDE extension.js ─────────────────────────────
@@ -993,6 +1768,10 @@ window.addEventListener('message', (event) => {
             break;
         case 'speak':
             speak(data.text || '');
+            break;
+        case 'chatResponse':
+            toggleChat(true);
+            renderChatMessage('bard', data.text || '');
             break;
         case 'levelUpVisual':
             levelUpEffect(data.level, data.rank || '');
@@ -1032,6 +1811,12 @@ window.addEventListener('message', (event) => {
         case 'refreshQuestBoard':
             renderQuestBoard(data.quests);
             break;
+        case 'showAdventureCards':
+            renderAdventureCards(data.cards || []);
+            break;
+        case 'removeAdventureCard':
+            if (data.cardId) removeAdventureCard(data.cardId);
+            break;
         case 'questCompleted':
             if (data.narration) speak('🎉 MISIÓN CUMPLIDA: ' + data.quest.title + '\\n' + data.narration);
             if (data.state) renderInventory(data.state);
@@ -1050,11 +1835,26 @@ window.addEventListener('message', (event) => {
         case 'updateVisualSkins':
             updateHeroSkin(data.skin);
             break;
+        case 'openSideTab':
+            switchTab(data.tab || 'destiny');
+            break;
+        case 'focusAdventureCard':
+            if (data.cardId) highlightAdventureCard(data.cardId);
+            break;
+        case 'showCommitModal':
+            showCommitModal(data);
+            break;
+        case 'hideCommitModal':
+            hideCommitModal();
+            break;
     }
 });
 
 // ── INICIO REAL: Cargar imágenes con fetch, luego arrancar Phaser ────────
 console.log('[NoCodeQuest] Cargando imágenes con fetch...');
+// #region debug-point E:asset-load
+__dbg('E','panel.js:assets','promise-all-start',{hero:HERO_URI,bug:BUG_URI,dungeon:DUNGEON_URI});
+// #endregion
 Promise.all([
     loadImage(DUNGEON_URI),
     loadImage(HERO_URI),
@@ -1064,8 +1864,14 @@ Promise.all([
     loadedHero = heroImg;
     loadedBug = bugImg;
     console.log('[NoCodeQuest] Imágenes cargadas correctamente');
+    // #region debug-point E:asset-load
+    __dbg('E','panel.js:assets','promise-all-success',{dungeon:!!dungeonImg,hero:!!heroImg,bug:!!bugImg});
+    // #endregion
     startGame();
 }).catch(err => {
+    // #region debug-point E:asset-load
+    __dbg('E','panel.js:assets','promise-all-failed',{message:err.message,stack:err.stack||null});
+    // #endregion
     console.error('[NoCodeQuest] Error fatal al cargar imágenes:', err);
     document.getElementById('phaser-container').innerHTML = '<div style="color:red;padding:20px;">Error al cargar los pergaminos visuales. Revisa la consola.</div>';
 });

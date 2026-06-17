@@ -41,6 +41,8 @@ const NEW_GAME_STATE = {
         decorations: ['planta_buen_codigo'],
         technical_debt_level: 0
     },
+    acceptedQuests: [],
+    adventureLog: [],
     stats: {
         bugsDefeated: 0,
         commitsTotal: 0,
@@ -183,6 +185,87 @@ class InventoryManager {
         this.saveGame();
     }
 
+    recordAdventureEvent(entry) {
+        if (!entry) return;
+
+        this.gameState.adventureLog.unshift({
+            ...entry,
+            chronicleText: entry.chronicleText || this._composeChronicleText(entry),
+            recordedAt: new Date().toISOString()
+        });
+        this.gameState.adventureLog = this.gameState.adventureLog.slice(0, 50);
+        this.saveGame();
+    }
+
+    _composeChronicleText(entry) {
+        const weapon = this.gameState.player?.equipped?.weapon || 'arma desconocida';
+        const weaponNames = {
+            martillo_refactor: 'Martillo de la Refactorización',
+            espada_linter: 'Espada del Linter',
+            arco_breakpoint: 'Arco del Breakpoint'
+        };
+        const weaponLabel = weaponNames[weapon] || weapon;
+
+        switch (entry.type) {
+            case 'commit':
+                return `En una hora propicia del reino, el Aventurero, blandiendo la ${weaponLabel}, selló una partida gloriosa. ${entry.description || 'Las crónicas de Git recibieron un nuevo juramento.'}`;
+            case 'quest-accepted':
+                return `Jasper alzó su laúd cuando el Aventurero juró la misión "${entry.title}". Desde ese instante, ${entry.description || 'un nuevo encargo'} quedó inscrito en la crónica del gremio.`;
+            case 'quest-completed':
+                return `La misión "${entry.title}" fue cumplida con pulso firme y runas obedientes. El reino premió la hazaña con ${entry.rewardExp || 0} EXP y ${entry.rewardGold || 0} monedas de oro.`;
+            case 'bug-defeated':
+                return `Un enemigo del código cayó bajo la ${weaponLabel}. ${entry.description || 'El monstruo se deshizo en polvo arcano'} y la mazmorra recuperó parte de su sosiego.`;
+            case 'potion-used':
+                return `El Aventurero bebió una Poción de Café y el brebaje recorrió la guarida como un conjuro de claridad. La planta resistió una noche más frente al caos técnico.`;
+            case 'shop-purchase':
+                return `En el Mercado del Gremio, el Aventurero adquirió ${entry.itemName || 'un artefacto'} por ${entry.price || 0} monedas. Jasper juró que toda gran campaña necesita provisiones dignas.`;
+            case 'boss-defeated':
+                return `El Dragón del Merge cayó al fin, y sus cabezas se rindieron ante la disciplina del Aventurero. Las crónicas registraron una victoria que los repositorios no olvidarán.`;
+            default:
+                return entry.description || entry.title || 'Una nueva hazaña ha sido inscrita en la crónica del reino.';
+        }
+    }
+
+    acceptQuest(quest) {
+        if (!quest?.id) {
+            return { success: false, message: '❌ Esa misión carece de pergamino válido.' };
+        }
+
+        const alreadyAccepted = this.gameState.acceptedQuests.some(q => q.id === quest.id);
+        if (alreadyAccepted) {
+            return { success: false, message: '⚠️ Esa misión ya fue jurada ante el gremio.' };
+        }
+
+        const acceptedQuest = {
+            id: quest.id,
+            title: quest.title,
+            description: quest.description,
+            fileName: quest.fileName || null,
+            filePath: quest.filePath || null,
+            line: typeof quest.line === 'number' ? quest.line : null,
+            rewardExp: quest.rewardExp || 0,
+            rewardGold: quest.rewardGold || 0,
+            acceptedAt: new Date().toISOString()
+        };
+
+        this.gameState.acceptedQuests.push(acceptedQuest);
+        this.recordAdventureEvent({
+            type: 'quest-accepted',
+            title: acceptedQuest.title,
+            description: acceptedQuest.description,
+            targetFile: acceptedQuest.filePath || acceptedQuest.fileName || null,
+            targetLine: acceptedQuest.line
+        });
+        this.saveGame();
+
+        return {
+            success: true,
+            message: `📜 Misión aceptada: ${acceptedQuest.title}`,
+            quest: acceptedQuest,
+            newState: this.gameState
+        };
+    }
+
     _checkBadges() {
         const { stats, badges } = this.gameState;
         const addBadge = (id) => { if (!badges.includes(id)) badges.push(id); };
@@ -225,6 +308,14 @@ class InventoryManager {
         }
 
         this.saveGame();
+        this.recordAdventureEvent({
+            type: 'shop-purchase',
+            title: 'Compra en el Mercado',
+            description: `El aventurero obtuvo ${itemId}.`,
+            itemId,
+            itemName: itemId,
+            price
+        });
         return { success: true, message: `🛍️ ¡Adquirido: ${itemId}!`, newState: this.gameState };
     }
 
@@ -254,6 +345,11 @@ class InventoryManager {
         inventory.potions.pocion_cafe--;
         lair.technical_debt_level = Math.max(0, lair.technical_debt_level - 15);
         this.saveGame();
+        this.recordAdventureEvent({
+            type: 'potion-used',
+            title: 'Poción de Café Bebida',
+            description: `La deuda técnica descendió a ${lair.technical_debt_level}.`
+        });
 
         let newHealth = 'saludable';
         if (lair.technical_debt_level > 25) newHealth = 'marchita';
@@ -318,9 +414,12 @@ class InventoryManager {
 
             // Escucha cambios de estado en los repositorios (incluye commits)
             const repo = gitApi.repositories[0];
+            let lastSeenCommit = repo.state.HEAD?.commit || null;
             repo.state.onDidChange(() => {
-                if (repo.state.HEAD?.commit) {
-                    onCommit();
+                const currentCommit = repo.state.HEAD?.commit || null;
+                if (currentCommit && currentCommit !== lastSeenCommit) {
+                    lastSeenCommit = currentCommit;
+                    onCommit(currentCommit);
                 }
             });
         } catch (err) {
@@ -334,6 +433,8 @@ class InventoryManager {
     getPlayer() { return this.gameState.player; }
     getInventory() { return this.gameState.inventory; }
     getLair() { return this.gameState.lair; }
+    getAdventureLog() { return this.gameState.adventureLog; }
+    getAcceptedQuests() { return this.gameState.acceptedQuests; }
 }
 
 module.exports = InventoryManager;

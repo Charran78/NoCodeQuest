@@ -1,7 +1,7 @@
 {
   "name": "nocodequest",
   "displayName": "NoCodeQuest ⚔️ RPG",
-  "description": "Transforma tu entorno de desarrollo en una aventura gráfica de rol medieval. Combate bugs, sube de nivel y escucha al bardo Jaskier narrar tu código.",
+  "description": "Transforma tu entorno de desarrollo en una aventura gráfica de rol medieval. Combate bugs, sube de nivel y escucha al bardo Jasper narrar tu código.",
   "version": "1.0.1",
   "publisher": "pedromencias",
   "repository": {
@@ -11,8 +11,16 @@
   "engines": {
     "vscode": "^1.75.0"
   },
-  "categories": ["Other"],
-  "keywords": ["rpg", "game", "productivity", "fun", "pixel-art"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "rpg",
+    "game",
+    "productivity",
+    "fun",
+    "pixel-art"
+  ],
   "icon": "media/icon.png",
   "activationEvents": [
     "onCommand:nocodequest.start",
@@ -29,6 +37,11 @@
       {
         "command": "nocodequest.showProfile",
         "title": "NoCodeQuest: 🧙 Ver Perfil del Aventurero",
+        "category": "NoCodeQuest"
+      },
+      {
+        "command": "nocodequest.inspectIdeState",
+        "title": "NoCodeQuest: 🪞 Inspeccionar Estado del IDE",
         "category": "NoCodeQuest"
       }
     ],
@@ -47,8 +60,8 @@
         "nocodequest.groqApiKey": {
           "type": "string",
           "default": "",
-          "description": "🔑 Tu API Key de Groq para que el bardo Jaskier pueda hablar. Obtenla gratis en https://console.groq.com",
-          "markdownDescription": "🔑 Tu **API Key de Groq** para que Jaskier narre tus batallas. Obtenla gratis en [console.groq.com](https://console.groq.com)"
+          "description": "🔑 Tu API Key de Groq para que el bardo Jasper pueda hablar. Obtenla gratis en https://console.groq.com",
+          "markdownDescription": "🔑 Tu **API Key de Groq** para que Jasper narre tus batallas. Obtenla gratis en [console.groq.com](https://console.groq.com)"
         },
         "nocodequest.groqModel": {
           "type": "string",
@@ -82,6 +95,5 @@
   "dependencies": {
     "axios": "^1.6.0"
   },
-  "devDependencies": {},
   "license": "MIT"
 }

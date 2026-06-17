@@ -1,6 +1,6 @@
 /**
  * narrationEngine.js
- * El Oráculo de Groq — Motor narrativo del bardo Jaskier
+ * El Oráculo de Groq — Motor narrativo del bardo Jasper
  * Conecta con Groq API (llama-3.1-8b-instant) para generar diálogos inmersivos en rol.
  */
 
@@ -9,7 +9,7 @@ const axios = require('axios');
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 // Diccionario de traducción técnica → medieval
-const SYSTEM_PROMPT = `Eres Jaskier, el bardo más famoso y carismático del reino de los programadores.
+const SYSTEM_PROMPT = `Eres Jasper, el bardo más famoso y carismático del reino de los programadores.
 Acompañas al Aventurero (un desarrollador de software) en su travesía por las mazmorras del código.
 
 REGLAS ESTRICTAS que nunca romperás:
@@ -79,19 +79,25 @@ function buildUserMessage(errorDetails, context, inventoryState) {
             return `[CÓDIGO LIMPIO] El archivo "${errorDetails}" está impecable y ordenado. Celebra la pureza del código con admiración sincera. 1-2 frases.`;
         case 'share-achievement':
             return `[PREGÓN] El héroe ha pintado un retrato de sus hazañas para mostrarlo en las plazas del reino. Proclama con voz de pregonero. 2 frases pomposas.`;
+        case 'commit-message':
+            return `[SELLO REAL] Genera un mensaje de commit MUY corto, en una sola línea, sin comillas ni emojis, con tono medieval sobrio. Máximo 60 caracteres. Contexto: "${errorDetails}".`;
+        case 'commit-celebration':
+            return `[CRONICA DE COMMIT] El Aventurero ha sellado cambios reales en las crónicas: "${errorDetails}". Celebra el commit con tono épico medieval, sin hablar de combate. Máximo 2 frases.`;
+        case 'chat':
+            return `[CONSEJO DE TABERNA] El Aventurero te pregunta: "${errorDetails}". Responde como Jasper con consejo útil, tono épico y humor ligero. Máximo 2 frases.`;
         default:
             return `[EVENTO: ${context}] ${errorDetails}`;
     }
 }
 
 /**
- * Función principal: llama al Oráculo de Groq y retorna la narración de Jaskier
+ * Función principal: llama al Oráculo de Groq y retorna la narración de Jasper
  * @param {string} errorDetails - Descripción del evento
  * @param {string} context - Tipo de evento ('combat', 'post-combat', 'level-up', etc.)
  * @param {object|null} inventoryState - Estado actual del inventario del jugador
  * @param {string} apiKey - API Key de Groq
  * @param {string} model - Modelo de Groq a usar
- * @returns {Promise<string>} Narración de Jaskier
+ * @returns {Promise<string>} Narración de Jasper
  */
 async function fetchNarration(errorDetails, context = 'combat', inventoryState = null, apiKey = '', model = 'llama-3.1-8b-instant') {
     if (!apiKey || apiKey.trim() === '') {
@@ -137,7 +143,7 @@ async function fetchNarration(errorDetails, context = 'combat', inventoryState =
 function silentBard() {
     const silences = [
         '🎵 *El bardo afina su laúd en silencio...* _(Configura tu Groq API Key en los ajustes de NoCodeQuest para despertar al oráculo)_',
-        '🎵 *Jaskier entreabre los labios, pero el hechizo del silencio lo encadena...* _(Necesitas una API Key de Groq)_'
+        '🎵 *Jasper entreabre los labios, pero el hechizo del silencio lo encadena...* _(Necesitas una API Key de Groq)_'
     ];
     return silences[Math.floor(Math.random() * silences.length)];
 }
@@ -150,8 +156,11 @@ function fallbackNarration(context) {
         combat: '⚔️ *¡Por los bigotes de Yen! Una distorsión en el tejido arcano silencia mi inspiración... ¡Pero el monstruo está ahí, aventurero!*',
         'post-combat': '🎵 *La victoria es tuya aunque el bardo permanezca mudo. ¡Las monedas tintinean sin necesidad de coplas!*',
         'level-up': '👑 *¡El reino tiembla ante tu ascenso! El bardo lo proclamaría si el oráculo no durmiera.*',
-        'quest-completed': '📜 *Misión cumplida en silencio digno. Jaskier lo cantaría si pudiera conectar con el oráculo.*',
+        'quest-completed': '📜 *Misión cumplida en silencio digno. Jasper lo cantaría si pudiera conectar con el oráculo.*',
         'boss-victory': '🐉 *¡El dragón cae! La leyenda se escribe sola aunque el bardo calle hoy.*',
+        'commit-message': 'sello real antes de nueva incursión',
+        'commit-celebration': '🔒 *El sello real queda inscrito en las crónicas y Jasper brinda por tu disciplina versionadora.*',
+        chat: '🎵 *Jasper te escucha desde la penumbra y recomienda avanzar con tino, aunque hoy el oráculo bostece.*',
         default: '🎵 *Un muro de estática mágica silencia al bardo por hoy.*'
     };
     return fallbacks[context] || fallbacks.default;

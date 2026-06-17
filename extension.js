@@ -12,6 +12,7 @@ const InventoryManager  = require('./inventoryManager');
 const QuestBoard        = require('./questBoard');
 const ComplexityMapper  = require('./complexityMapper');
 const BossManager       = require('./bossManager');
+const AdventureOracle   = require('./adventureOracle');
 const { fetchNarration } = require('./narrationEngine');
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────
@@ -35,11 +36,277 @@ function activate(context) {
     const questBoard    = new QuestBoard();
     const complexityMapper = new ComplexityMapper();
     const bossManager   = new BossManager();
+    const adventureOracle = new AdventureOracle(questBoard);
 
     // Estado de la sesión
     let currentPanel        = undefined;
     let currentActiveQuests = [];
     let lastErrorCount      = 0;
+    let lastChatMessage     = null;
+
+    async function refreshAdventureCards(panel = currentPanel) {
+        if (!panel) return;
+        const ideState = await adventureOracle.collectIdeState({
+            gameState,
+            lastChatMessage
+        });
+        sendToPanel(panel, 'showAdventureCards', {
+            cards: ideState.adventure_cards || []
+        });
+    }
+
+    function dismissAdventureCard(cardId, panel = currentPanel) {
+        if (!cardId) return;
+        sendToPanel(panel, 'removeAdventureCard', { cardId });
+    }
+
+    function getPrimaryRepository() {
+        try {
+            const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
+            if (!gitExtension) return null;
+            const gitApi = gitExtension.getAPI(1);
+            return gitApi?.repositories?.[0] || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    async function revealTargetLocation(target) {
+        if (!target?.file) return false;
+
+        try {
+            const doc = await vscode.workspace.openTextDocument(target.file);
+            const editor = await vscode.window.showTextDocument(doc, {
+                preview: false,
+                viewColumn: vscode.ViewColumn.One
+            });
+
+            const line = Math.max(0, (target.line || 1) - 1);
+            const pos = new vscode.Position(line, 0);
+            const range = new vscode.Range(pos, pos);
+            editor.selection = new vscode.Selection(pos, pos);
+            editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+            return true;
+        } catch (err) {
+            vscode.window.showErrorMessage('No pude abrir el pergamino objetivo: ' + err.message);
+            return false;
+        }
+    }
+
+    async function generateCommitMessage(apiKey, model, narrationEnabled) {
+        const modifiedFiles = adventureOracle.collectModifiedFiles();
+        const modifiedCount = modifiedFiles.length;
+        const modifiedNames = modifiedFiles
+            .slice(0, 4)
+            .map(file => file.name || path.basename(file.path || 'archivo'))
+            .join(', ');
+        const context = `Cambios listos para sellar: ${modifiedCount} archivo(s) modificados en ${workspaceRoot || 'el reino actual'}. Pergaminos afectados: ${modifiedNames || 'sin nombre legible'}.`;
+
+        if (narrationEnabled && apiKey) {
+            const generated = await fetchNarration(
+                context,
+                'commit-message',
+                gameState.getState(),
+                apiKey,
+                model
+            );
+            return sanitizeCommitMessage(generated);
+        }
+
+        return 'sello real antes de nueva incursión';
+    }
+
+    async function requestCommitPreview(panel, narrationEnabled, apiKey, model, sourceCardId = null) {
+        const repo = getPrimaryRepository();
+        if (!repo) {
+            sendToPanel(panel, 'speak', {
+                text: '📚 No encuentro un repositorio del reino. El sello real deberá esperar.'
+            });
+            return;
+        }
+
+        const changedEntries = [
+            ...(repo.state?.workingTreeChanges || []),
+            ...(repo.state?.indexChanges || []),
+            ...(repo.state?.untrackedChanges || []),
+            ...(repo.state?.mergeChanges || [])
+        ];
+
+        if (!changedEntries.length) {
+            sendToPanel(panel, 'speak', {
+                text: '🌿 No hay cambios que sellar. Las crónicas ya están en calma.'
+            });
+            return;
+        }
+
+        const suggestedMessage = await generateCommitMessage(apiKey, model, narrationEnabled);
+        sendToPanel(panel, 'showCommitModal', {
+            suggestedMessage,
+            cardId: sourceCardId,
+            changedFiles: changedEntries.slice(0, 6).map(change => path.basename(change.uri?.fsPath || 'archivo'))
+        });
+    }
+
+    function sanitizeCommitMessage(text) {
+        const compact = String(text || '')
+            .replace(/[\r\n]+/g, ' ')
+            .replace(/["'`]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/[^\w\s\-:áéíóúÁÉÍÓÚñÑ]/g, '');
+
+        if (!compact) return 'sello real antes de nueva incursión';
+        return compact.slice(0, 60).trim();
+    }
+
+    async function executeCommitAction(panel, narrationEnabled, apiKey, model, options = {}) {
+        const card = options.card || null;
+        const overrideMessage = options.overrideMessage || '';
+        const repo = getPrimaryRepository();
+        if (!repo) {
+            sendToPanel(panel, 'speak', {
+                text: '📚 No encuentro un repositorio del reino. El sello real deberá esperar.'
+            });
+            return;
+        }
+
+        const hasChanges = (repo.state?.workingTreeChanges || []).length
+            || (repo.state?.indexChanges || []).length
+            || (repo.state?.untrackedChanges || []).length
+            || (repo.state?.mergeChanges || []).length;
+
+        if (!hasChanges) {
+            sendToPanel(panel, 'speak', {
+                text: '🌿 No hay cambios que sellar. Las crónicas ya están en calma.'
+            });
+            return;
+        }
+
+        const commitMessage = overrideMessage
+            ? sanitizeCommitMessage(overrideMessage)
+            : await generateCommitMessage(apiKey, model, narrationEnabled);
+
+        try {
+            await repo.commit(commitMessage, { all: true });
+            gameState.recordAdventureEvent({
+                type: 'commit',
+                title: 'Sello Real Forjado',
+                description: commitMessage,
+                sourceCardId: card?.id || null
+            });
+            sendToPanel(panel, 'speak', {
+                text: `🔒 Jasper ha dictado el sello: "${commitMessage}". Las crónicas del repositorio han sido actualizadas.`
+            });
+            dismissAdventureCard(card?.id, panel);
+            sendToPanel(panel, 'hideCommitModal', {});
+            await refreshAdventureCards(panel);
+        } catch (err) {
+            sendToPanel(panel, 'speak', {
+                text: '❌ El sello real ha fallado: ' + err.message
+            });
+        }
+    }
+
+    async function acceptQuestById(questId, panel, sourceCardId = null) {
+        const quest = currentActiveQuests.find(q => q.id === questId);
+
+        if (!quest) {
+            sendToPanel(panel, 'speak', {
+                text: '📜 La misión ya no figura en el tablón o ha cambiado de forma.'
+            });
+            return;
+        }
+
+        const accepted = gameState.acceptQuest(quest);
+        if (!accepted.success) {
+            sendToPanel(panel, 'speak', { text: accepted.message });
+            return;
+        }
+
+        await revealTargetLocation({
+            file: quest.filePath,
+            line: quest.line + 1
+        });
+        sendToPanel(panel, 'openSideTab', { tab: 'quests' });
+        dismissAdventureCard(sourceCardId, panel);
+        sendToPanel(panel, 'syncInventory', { state: gameState.getState() });
+        sendToPanel(panel, 'refreshQuestBoard', { quests: currentActiveQuests });
+        sendToPanel(panel, 'speak', {
+            text: `📜 Juras completar "${quest.title}". La misión ha sido añadida a la crónica de aventuras.`
+        });
+        await refreshAdventureCards(panel);
+    }
+
+    async function acceptQuestFromCard(card, panel) {
+        const target = card?.target || {};
+        await acceptQuestById(target.quest_id, panel, card.id);
+    }
+
+    async function consumeCoffeePotion(panel, narrationEnabled, apiKey, model, sourceCardId = null) {
+        const potion = gameState.useCoffeePotion();
+        if (potion.success) {
+            let narration = '';
+            if (narrationEnabled) {
+                narration = await fetchNarration(
+                    `Caos reducido a ${potion.newChaos}. Planta: ${potion.newHealth}`,
+                    'use-potion',
+                    gameState.getState(),
+                    apiKey, model
+                );
+            }
+            sendToPanel(panel, 'potionResult', {
+                chaos:    potion.newChaos,
+                health:   potion.newHealth,
+                narration,
+                state:    gameState.getState()
+            });
+            dismissAdventureCard(sourceCardId, panel);
+            await refreshAdventureCards(panel);
+        } else {
+            sendToPanel(panel, 'speak', { text: potion.message });
+        }
+    }
+
+    async function handleAdventureCardSelection(card, panel, narrationEnabled, apiKey, model) {
+        if (!card?.action) return;
+
+        switch (card.action) {
+            case 'use_potion':
+                await consumeCoffeePotion(panel, narrationEnabled, apiKey, model, card.id);
+                break;
+
+            case 'open_shop':
+                dismissAdventureCard(card.id, panel);
+                sendToPanel(panel, 'openSideTab', { tab: 'shop' });
+                sendToPanel(panel, 'speak', {
+                    text: '🛒 Jasper señala el Mercado del Gremio. Elige con cuidado qué reliquia comprar.'
+                });
+                break;
+
+            case 'commit_changes':
+                await requestCommitPreview(panel, narrationEnabled, apiKey, model, card.id);
+                break;
+
+            case 'accept_quest':
+                await acceptQuestFromCard(card, panel);
+                break;
+
+            case 'attack_bug':
+                sendToPanel(panel, 'focusAdventureCard', { cardId: card.id });
+                if (await revealTargetLocation(card.target)) {
+                    sendToPanel(panel, 'speak', {
+                        text: '⚔️ El enemigo ha sido localizado en su guarida. Ya tienes abierto el archivo y la línea exacta del combate.'
+                    });
+                }
+                break;
+
+            default:
+                sendToPanel(panel, 'speak', {
+                    text: '🌿 Esta senda aún no tiene ritual completo, pero ya ha quedado señalada en las crónicas.'
+                });
+                break;
+        }
+    }
 
     // ── Comando: Iniciar Aventura ─────────────────────────────────────────────
     const startCommand = vscode.commands.registerCommand('nocodequest.start', () => {
@@ -73,6 +340,7 @@ function activate(context) {
                 weapon: gameState.getPlayer().equipped.weapon,
                 skin:   gameState.getPlayer().equipped.skin
             });
+            refreshAdventureCards(currentPanel);
         }, 1200);
 
         // ── Receptor de mensajes del WebView ─────────────────────────────────
@@ -93,6 +361,13 @@ function activate(context) {
                             'Ataque con arma'
                         );
                         gameState.recordBugDefeated();
+                        gameState.recordAdventureEvent({
+                            type: 'bug-defeated',
+                            title: 'Bug derrotado en combate directo',
+                            description: combatLog,
+                            rewardExp: result.expGained,
+                            rewardGold: result.goldGained
+                        });
 
                         let narration = '';
                         if (narrationEnabled) {
@@ -119,6 +394,10 @@ function activate(context) {
 
                     // ─ Solicitud de narración manual ─────────────────────────
                     case 'requestNarration': {
+                        lastChatMessage = {
+                            role: 'user',
+                            content: message.errorContext || ''
+                        };
                         if (!narrationEnabled) break;
                         const text = await fetchNarration(
                             message.errorContext,
@@ -127,6 +406,29 @@ function activate(context) {
                             apiKey, model
                         );
                         sendToPanel(currentPanel, 'speak', { text });
+                        break;
+                    }
+
+                    case 'chatMessage': {
+                        const userText = String(message.text || '').trim();
+                        if (!userText) break;
+                        lastChatMessage = {
+                            role: 'user',
+                            content: userText
+                        };
+                        const text = await fetchNarration(
+                            userText,
+                            'chat',
+                            gameState.getState(),
+                            apiKey,
+                            model
+                        );
+                        sendToPanel(currentPanel, 'chatResponse', {
+                            userText,
+                            text
+                        });
+                        sendToPanel(currentPanel, 'speak', { text });
+                        await refreshAdventureCards(currentPanel);
                         break;
                     }
 
@@ -148,6 +450,7 @@ function activate(context) {
                                 narration,
                                 state: gameState.getState()
                             });
+                            await refreshAdventureCards(currentPanel);
                         } else {
                             sendToPanel(currentPanel, 'speak', { text: trade.message });
                         }
@@ -174,6 +477,7 @@ function activate(context) {
                                 skin:   gameState.getPlayer().equipped.skin,
                                 state:  gameState.getState()
                             });
+                            await refreshAdventureCards(currentPanel);
                         } else {
                             sendToPanel(currentPanel, 'speak', { text: equip.message });
                         }
@@ -182,26 +486,37 @@ function activate(context) {
 
                     // ─ Tomar Poción de Café ───────────────────────────────────
                     case 'consumeCoffeeRequest': {
-                        const potion = gameState.useCoffeePotion();
-                        if (potion.success) {
-                            let narration = '';
-                            if (narrationEnabled) {
-                                narration = await fetchNarration(
-                                    `Caos reducido a ${potion.newChaos}. Planta: ${potion.newHealth}`,
-                                    'use-potion',
-                                    gameState.getState(),
-                                    apiKey, model
-                                );
-                            }
-                            sendToPanel(currentPanel, 'potionResult', {
-                                chaos:    potion.newChaos,
-                                health:   potion.newHealth,
-                                narration,
-                                state:    gameState.getState()
-                            });
-                        } else {
-                            sendToPanel(currentPanel, 'speak', { text: potion.message });
-                        }
+                        await consumeCoffeePotion(currentPanel, narrationEnabled, apiKey, model);
+                        break;
+                    }
+
+                    // ─ Selección de Carta de Destino ──────────────────────────
+                    case 'cardSelected': {
+                        await handleAdventureCardSelection(
+                            message.card,
+                            currentPanel,
+                            narrationEnabled,
+                            apiKey,
+                            model
+                        );
+                        break;
+                    }
+
+                    case 'acceptQuestRequest': {
+                        await acceptQuestById(message.questId, currentPanel);
+                        break;
+                    }
+
+                    case 'commitChangesRequest': {
+                        await requestCommitPreview(currentPanel, narrationEnabled, apiKey, model);
+                        break;
+                    }
+
+                    case 'confirmCommitRequest': {
+                        await executeCommitAction(currentPanel, narrationEnabled, apiKey, model, {
+                            overrideMessage: message.commitMessage || '',
+                            card: message.cardId ? { id: message.cardId } : null
+                        });
                         break;
                     }
 
@@ -218,6 +533,7 @@ function activate(context) {
                                 });
                             }
                             sendToPanel(currentPanel, 'syncInventory', { state: gameState.getState() });
+                            await refreshAdventureCards(currentPanel);
                         } else {
                             sendToPanel(currentPanel, 'speak', { text: scroll.message || '❌ No quedan pergaminos.' });
                         }
@@ -228,9 +544,11 @@ function activate(context) {
                     case 'saveAchievementImage': {
                         try {
                             const buf = Buffer.from(message.base64Data.split(',')[1], 'base64');
+                            const defaultName = String(message.fileName || 'gesta_nocodequest.png')
+                                .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
                             const defaultPath = workspaceRoot
-                                ? path.join(workspaceRoot, 'gesta_nocodequest.png')
-                                : path.join(require('os').homedir(), 'gesta_nocodequest.png');
+                                ? path.join(workspaceRoot, defaultName)
+                                : path.join(require('os').homedir(), defaultName);
 
                             const saveUri = await vscode.window.showSaveDialog({
                                 defaultUri: vscode.Uri.file(defaultPath),
@@ -297,12 +615,20 @@ function activate(context) {
                     }
                 }
                 lastErrorCount = errors.length;
+                await refreshAdventureCards(currentPanel);
 
             } else if (lastErrorCount > 0) {
                 // Victoria: todos los errores resueltos
                 lastErrorCount = 0;
                 const result = gameState.earnReward(15, 10, 'Bug derrotado');
                 gameState.recordBugDefeated();
+                gameState.recordAdventureEvent({
+                    type: 'bug-defeated',
+                    title: 'Bug disipado',
+                    description: 'Todos los errores activos del archivo fueron purificados.',
+                    rewardExp: result.expGained,
+                    rewardGold: result.goldGained
+                });
 
                 sendToPanel(currentPanel, 'victory', { state: gameState.getState() });
 
@@ -311,6 +637,7 @@ function activate(context) {
                     const model  = getConfig('groqModel')  || 'llama-3.1-8b-instant';
                     triggerLevelUp(currentPanel, result, apiKey, model, gameState, getConfig('enableNarration') !== false);
                 }
+                await refreshAdventureCards(currentPanel);
             }
         });
 
@@ -330,7 +657,7 @@ function activate(context) {
                     fileName: analysis.fileName
                 });
 
-                // Jaskier celebra el código limpio
+                // Jasper celebra el código limpio
                 if (analysis.totalChaos < 10 && analysis.functionsAnalyzed > 0) {
                     const apiKey = getConfig('groqApiKey') || '';
                     const model  = getConfig('groqModel')  || 'llama-3.1-8b-instant';
@@ -351,6 +678,15 @@ function activate(context) {
             for (const quest of completed) {
                 const result = gameState.earnReward(quest.rewardExp, quest.rewardGold, quest.description);
                 gameState.recordQuestCompleted();
+                gameState.recordAdventureEvent({
+                    type: 'quest-completed',
+                    title: quest.title,
+                    description: quest.description,
+                    rewardExp: quest.rewardExp,
+                    rewardGold: quest.rewardGold,
+                    targetFile: quest.filePath || quest.fileName || null,
+                    targetLine: quest.line
+                });
 
                 const apiKey = getConfig('groqApiKey') || '';
                 const model  = getConfig('groqModel')  || 'llama-3.1-8b-instant';
@@ -370,6 +706,7 @@ function activate(context) {
 
             currentActiveQuests = updatedQuests;
             sendToPanel(currentPanel, 'refreshQuestBoard', { quests: currentActiveQuests });
+            await refreshAdventureCards(currentPanel);
         });
 
         // 3. Cambio de editor: actualiza quest board + detecta merge conflicts
@@ -398,6 +735,7 @@ function activate(context) {
                     sendToPanel(currentPanel, 'speak', { text: n });
                 }
             }
+            await refreshAdventureCards(currentPanel);
         });
 
         // 4. Cambios en texto: actualiza boss HP en tiempo real
@@ -413,6 +751,13 @@ function activate(context) {
                 const loot = bossManager.getBossLoot(1);
                 const result = gameState.earnReward(loot.exp, loot.gold, 'Dragón del Merge derrotado');
                 gameState.recordBossDefeated();
+                gameState.recordAdventureEvent({
+                    type: 'boss-defeated',
+                    title: 'Dragón del Merge Derrotado',
+                    description: 'Las cabezas del conflicto fueron reducidas a ceniza.',
+                    rewardExp: loot.exp,
+                    rewardGold: loot.gold
+                });
                 if (!gameState.getState().badges.includes(loot.badge)) {
                     gameState.getState().badges.push(loot.badge);
                     gameState.saveGame();
@@ -436,6 +781,7 @@ function activate(context) {
             } else if (conflicts > 0) {
                 sendToPanel(currentPanel, 'damageBoss', { headsLeft: conflicts });
             }
+            await refreshAdventureCards(currentPanel);
         });
 
         // 5. Git: recompensa por commits
@@ -451,7 +797,7 @@ function activate(context) {
             if (getConfig('enableNarration') !== false) {
                 const n = await fetchNarration(
                     'El aventurero ha sellado su partida con un Commit glorioso. +50 EXP, +20 Oro.',
-                    'post-combat', gameState.getState(), apiKey, model
+                    'commit-celebration', gameState.getState(), apiKey, model
                 );
                 sendToPanel(currentPanel, 'speak', { text: `🔒 SELLO REAL: Commit registrado en las crónicas.\n${n}` });
             }
@@ -459,6 +805,7 @@ function activate(context) {
             if (result.leveledUp) {
                 triggerLevelUp(currentPanel, result, apiKey, model, gameState, true);
             }
+            await refreshAdventureCards(currentPanel);
         });
 
         // ── Limpieza al cerrar el panel ───────────────────────────────────────
@@ -483,7 +830,24 @@ function activate(context) {
         );
     });
 
-    context.subscriptions.push(startCommand, profileCommand);
+    const inspectIdeStateCommand = vscode.commands.registerCommand('nocodequest.inspectIdeState', async () => {
+        const ideState = await adventureOracle.collectIdeState({
+            gameState,
+            lastChatMessage
+        });
+
+        const doc = await vscode.workspace.openTextDocument({
+            language: 'json',
+            content: JSON.stringify(ideState, null, 2)
+        });
+
+        await vscode.window.showTextDocument(doc, {
+            preview: false,
+            viewColumn: vscode.ViewColumn.One
+        });
+    });
+
+    context.subscriptions.push(startCommand, profileCommand, inspectIdeStateCommand);
 }
 
 // ─── Helper: enviar mensaje al panel ─────────────────────────────────────────
@@ -516,23 +880,24 @@ function getWebviewContent(webview, extensionUri) {
     const heroUri    = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'hero.png'));
     const bugUri     = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'bug.png'));
     const dungeonUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'dungeon.png'));
+    const phaserUri  = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'phaser.min.js'));
 
     const csp = [
         `default-src 'none'`,
         `img-src ${webview.cspSource} https: data:`,
-        `script-src 'nonce-${nonce}' https://cdn.jsdelivr.net`,
+        `script-src 'nonce-${nonce}' ${webview.cspSource}`,
         `style-src 'unsafe-inline'`,
         `font-src https://fonts.gstatic.com`,
-        `connect-src ${webview.cspSource} https: https://api.groq.com`
+        `connect-src ${webview.cspSource} https: https://api.groq.com http://127.0.0.1:7777`
     ].join('; ');
 
-    return getPanelHtml(nonce, csp, heroUri, bugUri, dungeonUri);
+    return getPanelHtml(nonce, csp, heroUri, bugUri, dungeonUri, phaserUri);
 }
 
 // ─── HTML del panel (importado desde webview/panel.js) ───────────────────────
-function getPanelHtml(nonce, csp, heroUri, bugUri, dungeonUri) {
+function getPanelHtml(nonce, csp, heroUri, bugUri, dungeonUri, phaserUri) {
     // El HTML completo se genera aquí para tener acceso a las URIs de los assets
-    return require('./webview/panel')(nonce, csp, heroUri.toString(), bugUri.toString(), dungeonUri.toString());
+    return require('./webview/panel')(nonce, csp, heroUri.toString(), bugUri.toString(), dungeonUri.toString(), phaserUri.toString());
 }
 
 function deactivate() {
