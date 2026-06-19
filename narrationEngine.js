@@ -7,6 +7,9 @@
 const axios = require('axios');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const RATE_LIMIT_COOLDOWN_MS = 30000;
+let groqCooldownUntil = 0;
+let lastRateLimitLogAt = 0;
 
 // Diccionario de traducción técnica → medieval
 const SYSTEM_PROMPT = `Eres Jasper, el bardo más famoso y carismático del reino de los programadores.
@@ -30,7 +33,9 @@ REGLAS ESTRICTAS que nunca romperás:
    - "deploy" → "cruzar el portal al reino de producción"
 4. Nunca muestres código. Nunca hables como una IA moderna.
 5. Reacciona al equipamiento del jugador si es relevante.
-6. Si no tienes API Key, di que el oráculo duerme y ofrece silencio digno.`;
+6. Si el usuario pregunta por codigo, contexto, errores, archivo activo o siguiente paso, DEBES priorizar el estado del IDE y el campo ui_state.speech_text del /compact por encima de pociones, mercado o flavor.
+7. Si el /compact trae diagnostics, active_file, modified_files o adventure_cards, debes mencionarlos de forma resumida y util.
+8. Si no tienes API Key, di que el oráculo duerme y ofrece silencio digno.`;
 
 /**
  * Genera un contexto de usuario adaptativo según la situación de combate
@@ -90,6 +95,47 @@ function buildUserMessage(errorDetails, context, inventoryState) {
     }
 }
 
+function clampString(value, maxLen = 5200) {
+    const str = String(value || '');
+    if (str.length <= maxLen) return str;
+    return str.slice(0, maxLen) + '\n...(truncado)';
+}
+
+function buildChatMessageWithCompact(userText, compact, inventoryState) {
+    const weapon = inventoryState?.player?.equipped?.weapon || 'sus propios puños';
+    const skin = inventoryState?.player?.equipped?.skin || 'mono_fabrica';
+    const level = inventoryState?.player?.level || 1;
+
+    const compactText = compact ? clampString(JSON.stringify(compact)) : '';
+    const ide = compact?.ide_state || {};
+    const diagnostics = ide?.diagnostics || {};
+    const firstError = Array.isArray(diagnostics.errors) && diagnostics.errors.length ? diagnostics.errors[0] : null;
+    const activeFile = ide?.active_file || null;
+    const modifiedFiles = Array.isArray(ide?.modified_files) ? ide.modified_files : [];
+    const cards = Array.isArray(ide?.adventure_cards) ? ide.adventure_cards : [];
+    const speech = compact?.ui_state?.speech_text || null;
+    const digestLines = [
+        activeFile ? `Archivo activo: ${activeFile.name || 'desconocido'} (${activeFile.language || 'sin lenguaje'})` : 'Archivo activo: ninguno',
+        `Errores activos: ${Array.isArray(diagnostics.errors) ? diagnostics.errors.length : 0}`,
+        firstError ? `Error principal: ${firstError.file || 'archivo'}:${firstError.line || '?'} ${firstError.message || ''}` : 'Error principal: ninguno',
+        `Modificados: ${modifiedFiles.length}`,
+        cards[0] ? `Carta sugerida: ${cards[0].title || cards[0].action || 'ninguna'}` : 'Carta sugerida: ninguna',
+        speech ? `Speech actual: ${speech}` : 'Speech actual: ninguno'
+    ];
+    const header = `[CONSEJO /compact] Héroe nivel ${level}, armado con ${weapon} y vestido con ${skin}. El Aventurero pregunta: "${userText}".`;
+    const digest = `\n\nRESUMEN VIVO:\n- ${digestLines.join('\n- ')}`;
+    const body = compactText ? `\n\n/compact:\n${compactText}` : '';
+    return header + digest + body + `\n\nResponde con 1-2 frases, sin código, usando el /compact como fuente de verdad. Si la pregunta va sobre código o contexto, céntrate en Archivo activo, Error principal, Modificados y Speech actual. Si Archivo activo es ninguno, dilo claramente y pide abrir un pergamino concreto antes de sellar commit.`;
+}
+
+function buildOracleMeta(state, label, reason = '') {
+    return {
+        state,
+        label,
+        reason
+    };
+}
+
 /**
  * Función principal: llama al Oráculo de Groq y retorna la narración de Jasper
  * @param {string} errorDetails - Descripción del evento
@@ -99,13 +145,26 @@ function buildUserMessage(errorDetails, context, inventoryState) {
  * @param {string} model - Modelo de Groq a usar
  * @returns {Promise<string>} Narración de Jasper
  */
-async function fetchNarration(errorDetails, context = 'combat', inventoryState = null, apiKey = '', model = 'llama-3.1-8b-instant') {
+async function fetchNarrationDetailed(errorDetails, context = 'combat', inventoryState = null, apiKey = '', model = 'llama-3.1-8b-instant', extra = null) {
     if (!apiKey || apiKey.trim() === '') {
-        return silentBard();
+        return {
+            text: silentBard(),
+            oracle: buildOracleMeta('sleeping', 'Oráculo dormido', 'Falta API Key')
+        };
+    }
+
+    const now = Date.now();
+    if (groqCooldownUntil > now) {
+        return {
+            text: fallbackNarration(context),
+            oracle: buildOracleMeta('cooldown', 'Oráculo en cooldown', 'Rate limit activo')
+        };
     }
 
     try {
-        const userMessage = buildUserMessage(errorDetails, context, inventoryState);
+        const userMessage = context === 'chat' && extra && extra.compact
+            ? buildChatMessageWithCompact(errorDetails, extra.compact, inventoryState)
+            : buildUserMessage(errorDetails, context, inventoryState);
 
         const response = await axios.post(GROQ_API_URL, {
             model: model,
@@ -127,14 +186,37 @@ async function fetchNarration(errorDetails, context = 'combat', inventoryState =
         const narration = response.data?.choices?.[0]?.message?.content;
         if (!narration) throw new Error('Respuesta vacía del oráculo');
 
-        return narration.trim();
+        return {
+            text: narration.trim(),
+            oracle: buildOracleMeta('live', 'Oráculo activo', 'Respuesta de Groq')
+        };
 
     } catch (err) {
+        const status = err?.response?.status || null;
+        if (status === 429) {
+            groqCooldownUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+            if ((Date.now() - lastRateLimitLogAt) > RATE_LIMIT_COOLDOWN_MS) {
+                lastRateLimitLogAt = Date.now();
+                console.warn('[NoCodeQuest] Groq en cooldown temporal por rate limit (429).');
+            }
+            return {
+                text: fallbackNarration(context),
+                oracle: buildOracleMeta('cooldown', 'Oráculo en cooldown', 'Groq devolvió 429')
+            };
+        }
+
         console.error('[NoCodeQuest] Error en el Oráculo de Groq:', err.message);
 
-        // Respuestas de fallback épicas sin consumir tokens
-        return fallbackNarration(context);
+        return {
+            text: fallbackNarration(context),
+            oracle: buildOracleMeta('fallback', 'Guía local', err?.message || 'Error del oráculo')
+        };
     }
+}
+
+async function fetchNarration(errorDetails, context = 'combat', inventoryState = null, apiKey = '', model = 'llama-3.1-8b-instant', extra = null) {
+    const result = await fetchNarrationDetailed(errorDetails, context, inventoryState, apiKey, model, extra);
+    return result.text;
 }
 
 /**
@@ -166,4 +248,4 @@ function fallbackNarration(context) {
     return fallbacks[context] || fallbacks.default;
 }
 
-module.exports = { fetchNarration };
+module.exports = { fetchNarration, fetchNarrationDetailed };

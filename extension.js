@@ -7,13 +7,166 @@
 const vscode   = require('vscode');
 const path     = require('path');
 const crypto   = require('crypto');
+const http     = require('http');
+const fs       = require('fs');
 
 const InventoryManager  = require('./inventoryManager');
 const QuestBoard        = require('./questBoard');
 const ComplexityMapper  = require('./complexityMapper');
 const BossManager       = require('./bossManager');
 const AdventureOracle   = require('./adventureOracle');
-const { fetchNarration } = require('./narrationEngine');
+const { fetchNarration, fetchNarrationDetailed } = require('./narrationEngine');
+const CompactSystem     = require('./compactSystem');
+
+const BUILD_STAMP = 'H-2026-06-19-rt7';
+const panelRuntimeMirrors = new WeakMap();
+
+function buildRuntimeBootstrap(gameState, quests = []) {
+    const state = gameState?.getState?.() || null;
+    return {
+        state,
+        quests: quests || [],
+        cards: [],
+        ideSummary: null,
+        visualSkins: {
+            weapon: state?.player?.equipped?.weapon || null,
+            skin: state?.player?.equipped?.skin || null
+        },
+        speechText: 'Jasper afina su laud mientras el reino despierta...'
+    };
+}
+
+function readRuntimeMirrorSpeech(workspaceRoot) {
+    if (!workspaceRoot) return '';
+    try {
+        const filePath = path.join(workspaceRoot, '.nocodequest', 'webview-runtime.json');
+        if (!fs.existsSync(filePath)) return '';
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        const speech = parsed?.bootstrap?.speechText;
+        return speech ? String(speech) : '';
+    } catch (_) {
+        return '';
+    }
+}
+
+function buildNextStepSpeech(ideState) {
+    const diagnostics = Array.isArray(ideState?.diagnostics) ? ideState.diagnostics : [];
+    const errors = diagnostics.filter((entry) => entry.severity === 'error');
+    if (errors.length) {
+        const topError = errors[0];
+        return '🧭 Siguiente paso: revisar ' + (topError.file || 'el archivo activo') + ' en línea ' + (topError.line || '?') + ' por ' + (topError.message || 'un error activo');
+    }
+
+    const quests = Array.isArray(ideState?.quests) ? ideState.quests : [];
+    if (quests.length) {
+        const quest = quests[0];
+        return '🧭 Siguiente paso: aceptar la misión pendiente en ' + (quest.fileName || 'el IDE');
+    }
+
+    const modifiedFiles = Array.isArray(ideState?.modified_files) ? ideState.modified_files : [];
+    if (modifiedFiles.length) {
+        return '🧭 Siguiente paso: revisar ' + modifiedFiles.length + ' archivo(s) modificado(s) antes de sellar commit.';
+    }
+
+    const cards = Array.isArray(ideState?.adventure_cards) ? ideState.adventure_cards : [];
+    const top = cards[0];
+    if (!top?.title) return '🧭 Siguiente paso: abre Destino y elige una carta.';
+    return '🧭 Siguiente paso: ' + String(top.title);
+}
+
+function syncRuntimeBootstrapFromEvent(bootstrap, command, data = {}) {
+    if (!bootstrap || !command) return;
+
+    switch (command) {
+        case 'syncInventory':
+            bootstrap.state = data.state || null;
+            break;
+        case 'refreshQuestBoard':
+            bootstrap.quests = data.quests || [];
+            break;
+        case 'showAdventureCards':
+            bootstrap.cards = data.cards || [];
+            break;
+        case 'syncIdeSummary':
+            bootstrap.ideSummary = data.summary || null;
+            break;
+        case 'updateVisualSkins':
+            bootstrap.visualSkins = {
+                weapon: data.weapon || null,
+                skin: data.skin || null
+            };
+            break;
+        case 'speak':
+            bootstrap.speechText = data.text || bootstrap.speechText || '';
+            break;
+        case 'combatResult':
+        case 'purchaseResult':
+        case 'equipResult':
+        case 'potionResult':
+        case 'questCompleted':
+        case 'bossDefeated':
+        case 'victory':
+            if (data.state) bootstrap.state = data.state;
+            if (data.narration) bootstrap.speechText = data.narration;
+            break;
+        default:
+            break;
+    }
+}
+
+function flushRuntimeMirror(panel) {
+    const mirror = panel && panelRuntimeMirrors.get(panel);
+    if (!mirror?.filePath) return;
+
+    try {
+        fs.mkdirSync(path.dirname(mirror.filePath), { recursive: true });
+        fs.writeFileSync(
+            mirror.filePath,
+            JSON.stringify({
+                buildStamp: BUILD_STAMP,
+                seq: mirror.seq,
+                bootstrap: mirror.bootstrap,
+                events: mirror.events
+            }, null, 2),
+            'utf8'
+        );
+    } catch (error) {
+        reportExtensionDebug('E', 'extension.js:runtime-mirror', 'runtime mirror flush failed', {
+            message: error?.message || String(error),
+            filePath: mirror.filePath
+        });
+    }
+}
+
+function registerRuntimeMirror(panel, filePath, bootstrap) {
+    if (!panel || !filePath) return;
+    panelRuntimeMirrors.set(panel, {
+        filePath,
+        seq: 0,
+        bootstrap: bootstrap || buildRuntimeBootstrap(null, []),
+        events: []
+    });
+    flushRuntimeMirror(panel);
+}
+
+function mirrorPanelEvent(panel, command, data = {}) {
+    const mirror = panel && panelRuntimeMirrors.get(panel);
+    if (!mirror) return;
+
+    syncRuntimeBootstrapFromEvent(mirror.bootstrap, command, data);
+    mirror.seq += 1;
+    mirror.events.push({
+        id: mirror.seq,
+        command,
+        ...data,
+        ts: Date.now()
+    });
+    if (mirror.events.length > 160) {
+        mirror.events = mirror.events.slice(mirror.events.length - 160);
+    }
+    flushRuntimeMirror(panel);
+}
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────
 
@@ -25,14 +178,86 @@ function getConfig(key) {
     return vscode.workspace.getConfiguration('nocodequest').get(key);
 }
 
+function buildIdeSummary(ideState) {
+    const diagnostics = Array.isArray(ideState?.diagnostics) ? ideState.diagnostics : [];
+    const modifiedFiles = Array.isArray(ideState?.modified_files) ? ideState.modified_files : [];
+    const activeFile = ideState?.active_file || null;
+
+    const errorCount = diagnostics.filter(d => d.severity === 'error').length;
+    const warnCount = diagnostics.filter(d => d.severity === 'warning').length;
+    const topError = diagnostics.find(d => d.severity === 'error') || null;
+
+    return {
+        generatedAt: ideState?.generated_at || new Date().toISOString(),
+        workspaceName: ideState?.workspace?.name || null,
+        activeFile: activeFile
+            ? {
+                name: activeFile.name || null,
+                path: activeFile.path || null,
+                language: activeFile.language || null,
+                isDirty: !!activeFile.is_dirty
+            }
+            : null,
+        modifiedCount: modifiedFiles.length,
+        modifiedFiles: modifiedFiles.slice(0, 6).map(f => ({
+            name: f.name || null,
+            status: f.status || null,
+            path: f.path || null
+        })),
+        diagnostics: {
+            errorCount,
+            warnCount,
+            topError: topError
+                ? {
+                    file: topError.file || null,
+                    line: topError.line || null,
+                    message: topError.message || null
+                }
+                : null
+        }
+    };
+}
+
+function reportExtensionDebug(hypothesisId, location, msg, data = {}) {
+    // #region debug-point ext:A-E
+    try {
+        const payload = JSON.stringify({
+            sessionId: 'webview-black-screen',
+            runId: 'pre-fix',
+            hypothesisId,
+            location,
+            msg: '[DEBUG] ' + msg,
+            data,
+            ts: Date.now()
+        });
+
+        const req = http.request({
+            hostname: '127.0.0.1',
+            port: 7777,
+            path: '/event',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+            }
+        });
+
+        req.on('error', () => {});
+        req.write(payload);
+        req.end();
+    } catch (_) {}
+    // #endregion debug-point ext:A-E
+}
+
 // ─── Función de activación principal ─────────────────────────────────────────
 
 function activate(context) {
-    console.log('[NoCodeQuest] ⚔️  La aventura comienza...');
+    console.log(`[NoCodeQuest][BUILD ${BUILD_STAMP}] ⚔️  La aventura comienza...`);
 
     // Módulos del juego
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
     let gameState       = new InventoryManager(workspaceRoot);
+    const compactSystem = new CompactSystem(workspaceRoot);
     const questBoard    = new QuestBoard();
     const complexityMapper = new ComplexityMapper();
     const bossManager   = new BossManager();
@@ -43,7 +268,10 @@ function activate(context) {
     let currentActiveQuests = [];
     let lastErrorCount      = 0;
     let lastChatMessage     = null;
+    let lastAssistantReply  = null;
+    let lastIdeDigest       = null;
     let chatTranscript      = [];
+    let lastDecisions       = [];
 
     function appendChatTranscript(entry) {
         chatTranscript.push({
@@ -92,6 +320,166 @@ function activate(context) {
         return `nocodequest_chatlog_${stamp}.md`;
     }
 
+    function storeAssistantReply(payload) {
+        lastAssistantReply = payload ? {
+            userText: payload.userText || '',
+            text: payload.text || '',
+            suggestion: payload.suggestion || null,
+            aiModel: payload.aiModel || null,
+            oracle: payload.oracle || null,
+            generatedAt: new Date().toISOString()
+        } : null;
+    }
+
+    function buildClipboardPayloadForIde() {
+        if (!lastAssistantReply?.text) return '';
+        const lines = [];
+        lines.push('Jasper dice:');
+        lines.push(lastAssistantReply.text);
+        if (lastAssistantReply.suggestion?.title) {
+            lines.push('');
+            lines.push('HITL sugerido: ' + lastAssistantReply.suggestion.title);
+            if (lastAssistantReply.suggestion.reason) {
+                lines.push('Motivo: ' + lastAssistantReply.suggestion.reason);
+            }
+            if (lastAssistantReply.suggestion.recommended_action) {
+                lines.push('Accion: ' + lastAssistantReply.suggestion.recommended_action);
+            }
+        }
+        lines.push('');
+        lines.push('Pegalo en el chat del IDE para continuar con contexto compartido.');
+        return lines.join('\n');
+    }
+
+    function sendChatActionState(panel, buttonId, state, label, toastText = '', color = undefined) {
+        if (buttonId) {
+            sendToPanel(panel, 'chatActionState', {
+                buttonId,
+                state,
+                label
+            });
+        }
+        if (toastText) {
+            sendToPanel(panel, 'hitlToast', {
+                text: toastText,
+                color
+            });
+        }
+    }
+
+    function formatTargetLocation(target) {
+        if (!target?.file) return 'sin pergamino';
+        const fileName = path.basename(target.file);
+        return target.line ? `${fileName}:${target.line}` : fileName;
+    }
+
+    function refreshAdventureCardsInBackground(panel, ideStateOverride = null) {
+        refreshAdventureCards(panel, ideStateOverride).catch((error) => {
+            reportExtensionDebug('E', 'extension.js:refreshAdventureCardsInBackground', 'background refresh failed', {
+                message: error?.message || String(error)
+            });
+        });
+    }
+
+    function buildIdeDigest(ideState) {
+        if (!ideState) return '';
+        const diagnostics = Array.isArray(ideState.diagnostics) ? ideState.diagnostics : [];
+        const topError = diagnostics.find((entry) => entry.severity === 'error') || diagnostics[0] || null;
+        return JSON.stringify({
+            active: ideState.active_file?.path || null,
+            modified: (ideState.modified_files || []).map((file) => file.path || file.name || '').slice(0, 12),
+            quests: (ideState.quests || []).map((quest) => quest.id || quest.filePath || quest.fileName || '').slice(0, 8),
+            topError: topError ? [topError.path || topError.file || null, topError.line || null, topError.message || null] : null,
+            cards: (ideState.adventure_cards || []).map((card) => card.id || card.title || '').slice(0, 5)
+        });
+    }
+
+    function describeIdeDiff(previousDigest, nextDigest, ideState) {
+        if (!previousDigest) return 'primera lectura';
+        if (previousDigest === nextDigest) return 'sin cambios';
+        if (ideState?.active_file?.name) return 'cambio detectado en ' + ideState.active_file.name;
+        return 'contexto actualizado';
+    }
+
+    async function runChatAdvice(panel, userText, apiKey, model, options = {}) {
+        const {
+            appendUserEntry = false,
+            source = 'chat',
+            ideStateOverride = null
+        } = options;
+        if (!userText) return;
+
+        if (appendUserEntry) {
+            appendChatTranscript({
+                role: 'user',
+                text: userText
+            });
+        }
+
+        const ideState = ideStateOverride || await adventureOracle.collectIdeState({
+            gameState,
+            lastChatMessage
+        });
+        lastIdeDigest = buildIdeDigest(ideState);
+        const suggestion = buildChatSuggestion(ideState, userText);
+        const speechText = readRuntimeMirrorSpeech(workspaceRoot) || buildNextStepSpeech(ideState);
+        const compact = compactSystem.generateCompact({
+            ideState,
+            gameState,
+            chatTranscript,
+            lastDecisions,
+            includeHumanContext: true,
+            uiState: { speech_text: speechText }
+        });
+        const narration = await fetchNarrationDetailed(
+            userText,
+            'chat',
+            gameState.getState(),
+            apiKey,
+            model,
+            { compact }
+        );
+        const text = narration.text || '';
+        const oracle = narration.oracle || null;
+
+        appendChatTranscript({
+            role: 'assistant',
+            text,
+            aiModel: model,
+            suggestion,
+            oracle
+        });
+        storeAssistantReply({
+            userText,
+            text,
+            suggestion,
+            aiModel: model,
+            oracle
+        });
+
+        sendToPanel(panel, 'chatResponse', {
+            userText,
+            text,
+            suggestion,
+            aiModel: model,
+            oracle,
+            source
+        });
+        if (suggestion?.title) {
+            sendToPanel(panel, 'hitlToast', {
+                text: `🧭 Jasper sugiere: ${suggestion.title}`
+            });
+        }
+        if (suggestion?.payload?.cardId) {
+            sendToPanel(panel, 'hitlNudge', {
+                cardId: suggestion.payload.cardId,
+                action: suggestion.recommended_action || null
+            });
+        }
+        sendToPanel(panel, 'speak', { text });
+        await refreshAdventureCards(panel, ideState);
+    }
+
     async function quickExportChatTranscript(panel) {
         const logDir = workspaceRoot ? path.join(workspaceRoot, '.nocodequest', 'chatlogs') : null;
         if (!logDir) {
@@ -124,6 +512,10 @@ function activate(context) {
             gameState,
             lastChatMessage
         });
+        lastIdeDigest = buildIdeDigest(ideState);
+        sendToPanel(panel, 'syncIdeSummary', {
+            summary: buildIdeSummary(ideState)
+        });
         sendToPanel(panel, 'showAdventureCards', {
             cards: ideState.adventure_cards || []
         });
@@ -154,6 +546,8 @@ function activate(context) {
 
     function getSuggestionIntent(action) {
         switch (action) {
+            case 'inspect_code':
+                return 'inspect_code';
             case 'attack_bug':
                 return 'resolve_error';
             case 'accept_quest':
@@ -171,6 +565,8 @@ function activate(context) {
 
     function getSuggestionCta(card) {
         switch (card?.action) {
+            case 'inspect_code':
+                return 'Abrir pergamino';
             case 'attack_bug':
                 return 'Ir al enemigo';
             case 'accept_quest':
@@ -191,8 +587,18 @@ function activate(context) {
         const modifiedFiles = ideState?.modified_files || [];
         const quests = ideState?.quests || [];
         const player = ideState?.player_state || {};
+        const activeFile = ideState?.active_file || null;
 
         switch (card?.action) {
+            case 'inspect_code': {
+                const label = card?.target?.file
+                    ? path.basename(card.target.file)
+                    : (card?.target?.label || 'el pergamino relevante');
+                if (card?.target?.line) {
+                    return `No hay un combate directo listo, pero ${label} parece el mejor punto de entrada. Jasper propone abrirlo en la línea ${card.target.line}.`;
+                }
+                return `No hay archivo activo ahora mismo. Jasper propone abrir ${label} para recuperar contexto técnico real antes de decidir.`;
+            }
             case 'attack_bug': {
                 const criticalError = diagnostics.find(entry => entry.severity === 'error');
                 if (!criticalError) return 'Hay una amenaza activa en el IDE y conviene golpear primero.';
@@ -208,15 +614,50 @@ function activate(context) {
             case 'open_shop':
                 return `Tienes ${player.gold || 0} monedas y el mercado puede darte aire antes del siguiente combate.`;
             case 'commit_changes':
-                return `Hay ${modifiedFiles.length} archivo(s) con cambios y ningún sello reciente. Fijar el progreso ahora evita perder una victoria parcial.`;
+                return `Hay ${modifiedFiles.length} archivo(s) con cambios${activeFile?.name ? ', incluido ' + activeFile.name : ''}. Fijar el progreso ahora evita perder una victoria parcial.`;
             default:
                 return 'No hay urgencias claras; Jasper recomienda seguir explorando el reino del código.';
         }
     }
 
+    function detectChatFocus(normalizedText) {
+        if (!normalizedText) return 'general';
+        if (/(codigo|contexto|archivo|errores?|diagnostico|linter|refactor|funcion|hechizo|bug|stack|tipos?|warning|warnings|cambios|diff|commit|repo|git|siguiente paso|proximo paso|qué hacemos|que hacemos|que deberiamos|deberiamos hacer|abrir archivo|inspeccionar)/.test(normalizedText)) {
+            return 'code';
+        }
+        if (/(cafe|pocion|planta|caos|energia|descansar|recuperar)/.test(normalizedText)) {
+            return 'stability';
+        }
+        if (/(tienda|mercado|comprar|oro|arma|equipo)/.test(normalizedText)) {
+            return 'shop';
+        }
+        return 'general';
+    }
+
+    function getFocusScoreBoost(action, focus, ideState) {
+        if (focus === 'code') {
+            if (action === 'attack_bug') return (ideState?.diagnostics || []).some(d => d.severity === 'error') ? 520 : 260;
+            if (action === 'accept_quest') return (ideState?.quests || []).length ? 300 : 120;
+            if (action === 'commit_changes') {
+                const hasActiveFile = !!ideState?.active_file;
+                if (!hasActiveFile) return -120;
+                return (ideState?.modified_files || []).length ? 180 : 40;
+            }
+            if (action === 'use_potion') return -260;
+            if (action === 'open_shop') return -180;
+        }
+        if (focus === 'stability') {
+            if (action === 'use_potion') return 420;
+        }
+        if (focus === 'shop') {
+            if (action === 'open_shop') return 360;
+        }
+        return 0;
+    }
+
     function getActionKeywordBoost(action, normalizedText) {
         const keywordMap = {
-            attack_bug: ['bug', 'error', 'fallo', 'diagnostico', 'diagnosticos', 'arreglar', 'enemigo', 'rompio', 'roto'],
+            attack_bug: ['bug', 'error', 'fallo', 'diagnostico', 'diagnosticos', 'arreglar', 'enemigo', 'rompio', 'roto', 'codigo', 'archivo', 'warning', 'warnings', 'linter', 'contexto'],
             accept_quest: ['quest', 'mision', 'misiones', 'todo', 'fixme', 'pendiente', 'encargo'],
             use_potion: ['cafe', 'pocion', 'planta', 'caos', 'energia', 'descansar', 'recuperar'],
             open_shop: ['tienda', 'mercado', 'comprar', 'compra', 'oro', 'arma', 'equipo'],
@@ -226,23 +667,141 @@ function activate(context) {
         return keywords.some(keyword => normalizedText.includes(keyword)) ? 220 : 0;
     }
 
-    function selectSuggestedCard(cards, userText) {
+    function selectSuggestedCard(cards, userText, ideState) {
         if (!cards.length) return null;
 
         const normalizedText = normalizeChatText(userText);
+        const focus = detectChatFocus(normalizedText);
         const rankedCards = cards
             .map((card, index) => ({
                 card,
-                score: getCardPriorityScore(card.priority) + getActionKeywordBoost(card.action, normalizedText) - index
+                score:
+                    getCardPriorityScore(card.priority) +
+                    getActionKeywordBoost(card.action, normalizedText) +
+                    getFocusScoreBoost(card.action, focus, ideState) -
+                    index
             }))
             .sort((left, right) => right.score - left.score);
 
         return rankedCards[0]?.card || null;
     }
 
-    function buildChatSuggestion(ideState, userText) {
+    function buildCodeFocusSuggestion(ideState) {
+        const diagnostics = Array.isArray(ideState?.diagnostics) ? ideState.diagnostics : [];
+        const quests = Array.isArray(ideState?.quests) ? ideState.quests : [];
         const cards = Array.isArray(ideState?.adventure_cards) ? ideState.adventure_cards : [];
-        const selectedCard = selectSuggestedCard(cards, userText);
+        const activeFile = ideState?.active_file || null;
+        const modifiedFiles = Array.isArray(ideState?.modified_files) ? ideState.modified_files : [];
+
+        const criticalError = diagnostics.find((entry) => entry.severity === 'error' && entry.path);
+        if (criticalError) {
+            const liveAttackCard = cards.find((card) => card.action === 'attack_bug' && card.target?.file === criticalError.path);
+            const card = liveAttackCard || {
+                id: `inspect-error-${criticalError.path}-${criticalError.line || 1}`,
+                title: '⚔️ Revisar Error Detectado',
+                action: 'inspect_code',
+                priority: 'critical',
+                target: {
+                    file: criticalError.path,
+                    line: criticalError.line || 1,
+                    label: criticalError.file || path.basename(criticalError.path)
+                }
+            };
+
+            return {
+                id: `chat-hitl-${card.id}`,
+                source: liveAttackCard ? 'adventure_card' : 'code_focus',
+                intent: getSuggestionIntent(card.action),
+                title: liveAttackCard ? card.title : '⚔️ Revisar Error Detectado',
+                recommended_action: card.action,
+                reason: buildSuggestionReason(card, ideState),
+                cta_label: getSuggestionCta(card),
+                requires_confirmation: false,
+                payload: {
+                    cardId: liveAttackCard ? card.id : null,
+                    card
+                }
+            };
+        }
+
+        const pendingQuest = quests[0];
+        if (pendingQuest?.filePath) {
+            const liveQuestCard = cards.find((card) => card.action === 'accept_quest' && card.target?.quest_id === pendingQuest.id);
+            const card = liveQuestCard || {
+                id: `inspect-quest-${pendingQuest.id}`,
+                title: '📜 Abrir Misión Pendiente',
+                action: 'inspect_code',
+                priority: 'high',
+                target: {
+                    file: pendingQuest.filePath,
+                    line: (typeof pendingQuest.line === 'number' ? pendingQuest.line + 1 : 1),
+                    label: pendingQuest.fileName || path.basename(pendingQuest.filePath)
+                }
+            };
+
+            return {
+                id: `chat-hitl-${card.id}`,
+                source: liveQuestCard ? 'adventure_card' : 'code_focus',
+                intent: liveQuestCard ? getSuggestionIntent(card.action) : 'inspect_code',
+                title: liveQuestCard ? card.title : '📜 Abrir Misión Pendiente',
+                recommended_action: card.action,
+                reason: liveQuestCard
+                    ? buildSuggestionReason(card, ideState)
+                    : `Hay una misión pendiente en ${pendingQuest.fileName || 'un archivo del reino'}. Jasper propone abrirla antes de seguir improvisando.`,
+                cta_label: liveQuestCard ? getSuggestionCta(card) : 'Abrir misión',
+                requires_confirmation: false,
+                payload: {
+                    cardId: liveQuestCard ? card.id : null,
+                    card
+                }
+            };
+        }
+
+        const candidateFile = activeFile?.path ? {
+            file: activeFile.path,
+            line: 1,
+            label: activeFile.name || path.basename(activeFile.path)
+        } : modifiedFiles[0]?.path ? {
+            file: modifiedFiles[0].path,
+            line: 1,
+            label: modifiedFiles[0].name || path.basename(modifiedFiles[0].path)
+        } : null;
+
+        if (candidateFile) {
+            const card = {
+                id: `inspect-file-${candidateFile.file}`,
+                title: activeFile?.path ? '🧭 Inspeccionar Archivo Activo' : '🧭 Abrir Archivo Modificado',
+                action: 'inspect_code',
+                priority: 'high',
+                target: candidateFile
+            };
+
+            return {
+                id: `chat-hitl-${card.id}`,
+                source: 'code_focus',
+                intent: 'inspect_code',
+                title: card.title,
+                recommended_action: card.action,
+                reason: buildSuggestionReason(card, ideState),
+                cta_label: getSuggestionCta(card),
+                requires_confirmation: false,
+                payload: { card }
+            };
+        }
+
+        return null;
+    }
+
+    function buildChatSuggestion(ideState, userText) {
+        const normalizedText = normalizeChatText(userText);
+        const focus = detectChatFocus(normalizedText);
+        if (focus === 'code') {
+            const codeSuggestion = buildCodeFocusSuggestion(ideState);
+            if (codeSuggestion) return codeSuggestion;
+        }
+
+        const cards = Array.isArray(ideState?.adventure_cards) ? ideState.adventure_cards : [];
+        const selectedCard = selectSuggestedCard(cards, userText, ideState);
         if (!selectedCard) return null;
 
         return {
@@ -285,7 +844,10 @@ function activate(context) {
                 text: '🧭 La sugerencia de Jasper ya no coincide con el estado del IDE. El Oráculo recomienda pedir consejo de nuevo.'
             });
             await refreshAdventureCards(panel, ideState);
-            return;
+            return {
+                ok: false,
+                reason: 'stale-suggestion'
+            };
         }
 
         sendToPanel(panel, 'markChatSuggestionUsed', {
@@ -300,13 +862,36 @@ function activate(context) {
                 text: '🌿 Sin urgencias: sigue explorando'
             });
             await refreshAdventureCards(panel, ideState);
-            return;
+            return {
+                ok: true,
+                action: 'ignore'
+            };
         }
 
         sendToPanel(panel, 'hitlToast', {
             text: `🧭 Ritual: ${card.title || card.action}`
         });
-        await handleAdventureCardSelection(card, panel, narrationEnabled, apiKey, model);
+        return await handleAdventureCardSelection(card, panel, narrationEnabled, apiKey, model);
+    }
+
+    async function syncPanelBootstrap(panel, gameState, currentActiveQuests = []) {
+        if (!panel || !gameState) return;
+
+        // #region debug-point E:sync-bootstrap
+        reportExtensionDebug('E', 'extension.js:syncPanelBootstrap', 'sync panel bootstrap', {
+            level: gameState.getState()?.player?.level ?? null,
+            gold: gameState.getState()?.player?.gold ?? null,
+            questCount: currentActiveQuests.length
+        });
+        // #endregion debug-point E:sync-bootstrap
+
+        sendToPanel(panel, 'syncInventory', { state: gameState.getState() });
+        sendToPanel(panel, 'updateVisualSkins', {
+            weapon: gameState.getPlayer().equipped.weapon,
+            skin: gameState.getPlayer().equipped.skin
+        });
+        sendToPanel(panel, 'refreshQuestBoard', { quests: currentActiveQuests });
+        await refreshAdventureCards(panel);
     }
 
     function getPrimaryRepository() {
@@ -324,7 +909,12 @@ function activate(context) {
         if (!target?.file) return false;
 
         try {
-            const doc = await vscode.workspace.openTextDocument(target.file);
+            const resolvedPath = path.resolve(String(target.file));
+            if (!fs.existsSync(resolvedPath)) {
+                throw new Error('El pergamino no existe en disco: ' + resolvedPath);
+            }
+            const targetUri = vscode.Uri.file(resolvedPath);
+            const doc = await vscode.workspace.openTextDocument(targetUri);
             const editor = await vscode.window.showTextDocument(doc, {
                 preview: false,
                 viewColumn: vscode.ViewColumn.One
@@ -519,10 +1109,50 @@ function activate(context) {
     async function handleAdventureCardSelection(card, panel, narrationEnabled, apiKey, model) {
         if (!card?.action) return;
 
+        lastDecisions.push({
+            recordedAt: new Date().toISOString(),
+            cardId: card.id || null,
+            action: card.action || null,
+            title: card.title || null
+        });
+        if (lastDecisions.length > 40) {
+            lastDecisions = lastDecisions.slice(lastDecisions.length - 40);
+        }
+
         switch (card.action) {
+            case 'inspect_code':
+                sendToPanel(panel, 'openSideTab', { tab: 'destiny' });
+                sendToPanel(panel, 'focusAdventureCard', { cardId: card.id });
+                if (await revealTargetLocation(card.target)) {
+                    sendToPanel(panel, 'speak', {
+                        text: '🧭 Jasper ha abierto el pergamino clave. Ya tienes contexto técnico real para decidir el siguiente paso.'
+                    });
+                    refreshAdventureCardsInBackground(panel);
+                    return {
+                        ok: true,
+                        action: 'inspect_code',
+                        opened: true,
+                        targetLabel: formatTargetLocation(card.target)
+                    };
+                } else {
+                    sendToPanel(panel, 'speak', {
+                        text: '🧭 Jasper no pudo abrir el pergamino, pero ha fijado el foco en Destino para que revises el contexto del IDE.'
+                    });
+                    refreshAdventureCardsInBackground(panel);
+                    return {
+                        ok: false,
+                        action: 'inspect_code',
+                        opened: false,
+                        targetLabel: formatTargetLocation(card.target)
+                    };
+                }
+
             case 'use_potion':
                 await consumeCoffeePotion(panel, narrationEnabled, apiKey, model, card.id);
-                break;
+                return {
+                    ok: true,
+                    action: 'use_potion'
+                };
 
             case 'open_shop':
                 dismissAdventureCard(card.id, panel);
@@ -530,15 +1160,24 @@ function activate(context) {
                 sendToPanel(panel, 'speak', {
                     text: '🛒 Jasper señala el Mercado del Gremio. Elige con cuidado qué reliquia comprar.'
                 });
-                break;
+                return {
+                    ok: true,
+                    action: 'open_shop'
+                };
 
             case 'commit_changes':
                 await requestCommitPreview(panel, narrationEnabled, apiKey, model, card.id);
-                break;
+                return {
+                    ok: true,
+                    action: 'commit_changes'
+                };
 
             case 'accept_quest':
                 await acceptQuestFromCard(card, panel);
-                break;
+                return {
+                    ok: true,
+                    action: 'accept_quest'
+                };
 
             case 'attack_bug':
                 sendToPanel(panel, 'focusAdventureCard', { cardId: card.id });
@@ -546,14 +1185,30 @@ function activate(context) {
                     sendToPanel(panel, 'speak', {
                         text: '⚔️ El enemigo ha sido localizado en su guarida. Ya tienes abierto el archivo y la línea exacta del combate.'
                     });
+                    refreshAdventureCardsInBackground(panel);
+                    return {
+                        ok: true,
+                        action: 'attack_bug',
+                        opened: true,
+                        targetLabel: formatTargetLocation(card.target)
+                    };
                 }
-                break;
+                refreshAdventureCardsInBackground(panel);
+                return {
+                    ok: false,
+                    action: 'attack_bug',
+                    opened: false,
+                    targetLabel: formatTargetLocation(card.target)
+                };
 
             default:
                 sendToPanel(panel, 'speak', {
                     text: '🌿 Esta senda aún no tiene ritual completo, pero ya ha quedado señalada en las crónicas.'
                 });
-                break;
+                return {
+                    ok: true,
+                    action: card.action
+                };
         }
     }
 
@@ -564,6 +1219,25 @@ function activate(context) {
             return;
         }
 
+        // #region debug-point A:start-command
+        reportExtensionDebug('A', 'extension.js:startCommand', 'start command invoked', {
+            extensionUri: String(context.extensionUri),
+            workspaceRoot: workspaceRoot || null
+        });
+        // #endregion debug-point A:start-command
+
+        const runtimeMirrorPath = workspaceRoot
+            ? path.join(workspaceRoot, '.nocodequest', 'webview-runtime.json')
+            : null;
+        const runtimeMirrorDir = runtimeMirrorPath ? path.dirname(runtimeMirrorPath) : null;
+        const localResourceRoots = [
+            vscode.Uri.joinPath(context.extensionUri, 'media'),
+            vscode.Uri.joinPath(context.extensionUri, 'webview', 'modules')
+        ];
+        if (runtimeMirrorDir) {
+            localResourceRoots.push(vscode.Uri.file(runtimeMirrorDir));
+        }
+
         currentPanel = vscode.window.createWebviewPanel(
             'nocodequestEngine',
             '⚔️ NoCodeQuest',
@@ -571,35 +1245,54 @@ function activate(context) {
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [
-                    vscode.Uri.joinPath(context.extensionUri, 'media')
-                ]
+                localResourceRoots
             }
         );
 
-        currentPanel.webview.html = getWebviewContent(
-            currentPanel.webview,
-            context.extensionUri
+        registerRuntimeMirror(
+            currentPanel,
+            runtimeMirrorPath,
+            buildRuntimeBootstrap(gameState, currentActiveQuests)
         );
 
-        // Sincronización inicial tras cargar Phaser (delay de 1.2s)
-        setTimeout(() => {
-            sendToPanel(currentPanel, 'syncInventory', { state: gameState.getState() });
-            sendToPanel(currentPanel, 'updateVisualSkins', {
-                weapon: gameState.getPlayer().equipped.weapon,
-                skin:   gameState.getPlayer().equipped.skin
-            });
-            refreshAdventureCards(currentPanel);
-        }, 1200);
+        const runtimeMirrorUri = runtimeMirrorPath
+            ? currentPanel.webview.asWebviewUri(vscode.Uri.file(runtimeMirrorPath))
+            : null;
+
+        currentPanel.webview.html = getWebviewContent(
+            currentPanel.webview,
+            context.extensionUri,
+            runtimeMirrorUri
+        );
+
+        // #region debug-point A:html-assigned
+        reportExtensionDebug('A', 'extension.js:startCommand', 'webview html assigned', {
+            hasPanel: !!currentPanel,
+            localResourceRoots: localResourceRoots.map((uri) => path.basename(uri.fsPath || String(uri))),
+            runtimeMirrorPath
+        });
+        // #endregion debug-point A:html-assigned
 
         // ── Receptor de mensajes del WebView ─────────────────────────────────
         currentPanel.webview.onDidReceiveMessage(
             async (message) => {
+                // #region debug-point E:webview-message
+                reportExtensionDebug('E', 'extension.js:onDidReceiveMessage', 'message received from webview', {
+                    command: message && message.command ? message.command : null
+                });
+                // #endregion debug-point E:webview-message
                 const apiKey = getConfig('groqApiKey') || '';
                 const model  = getConfig('groqModel')  || 'llama-3.1-8b-instant';
                 const narrationEnabled = getConfig('enableNarration') !== false;
 
                 switch (message.command) {
+                    case 'webviewReady': {
+                        // #region debug-point E:webview-ready
+                        reportExtensionDebug('E', 'extension.js:webviewReady', 'webviewReady received', {});
+                        // #endregion debug-point E:webview-ready
+                        await syncPanelBootstrap(currentPanel, gameState, currentActiveQuests);
+                        break;
+                    }
 
                     // ─ Ataque con arma equipada ───────────────────────────────
                     case 'executeWeaponStrike': {
@@ -665,47 +1358,249 @@ function activate(context) {
                             role: 'user',
                             content: userText
                         };
-                        appendChatTranscript({
-                            role: 'user',
-                            text: userText
+                        await runChatAdvice(currentPanel, userText, apiKey, model, {
+                            appendUserEntry: true,
+                            source: 'chat'
                         });
+                        break;
+                    }
+
+                    case 'chatOpened': {
                         const ideState = await adventureOracle.collectIdeState({
                             gameState,
                             lastChatMessage
                         });
-                        const suggestion = buildChatSuggestion(ideState, userText);
-                        const text = await fetchNarration(
-                            userText,
-                            'chat',
-                            gameState.getState(),
-                            apiKey,
-                            model
-                        );
-                        appendChatTranscript({
-                            role: 'assistant',
-                            text,
-                            aiModel: model,
-                            suggestion
-                        });
-                        sendToPanel(currentPanel, 'chatResponse', {
-                            userText,
-                            text,
-                            suggestion,
-                            aiModel: model
-                        });
-                        if (suggestion?.title) {
-                            sendToPanel(currentPanel, 'hitlToast', {
-                                text: `🧭 Jasper sugiere: ${suggestion.title}`
-                            });
-                        }
-                        if (suggestion?.payload?.cardId) {
-                            sendToPanel(currentPanel, 'hitlNudge', {
-                                cardId: suggestion.payload.cardId,
-                                action: suggestion.recommended_action || null
-                            });
-                        }
-                        sendToPanel(currentPanel, 'speak', { text });
+                        sendToPanel(currentPanel, 'speak', { text: buildNextStepSpeech(ideState) });
                         await refreshAdventureCards(currentPanel, ideState);
+                        break;
+                    }
+
+                    case 'refreshIdeContext': {
+                        try {
+                            const ideState = await adventureOracle.collectIdeState({
+                                gameState,
+                                lastChatMessage
+                            });
+                            const nextDigest = buildIdeDigest(ideState);
+                            const diffLabel = describeIdeDiff(lastIdeDigest, nextDigest, ideState);
+                            if (diffLabel === 'sin cambios') {
+                                sendChatActionState(
+                                    currentPanel,
+                                    'chat-refresh',
+                                    'info',
+                                    'Sin diff',
+                                    '🧭 Sin cambios desde la ultima lectura del IDE'
+                                );
+                                break;
+                            }
+                            await refreshAdventureCards(currentPanel, ideState);
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-refresh',
+                                'done',
+                                'Con diff',
+                                `🧭 Contexto actualizado: ${diffLabel}`
+                            );
+                        } catch (error) {
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-refresh',
+                                'error',
+                                'Error',
+                                '❌ No pude refrescar el contexto del IDE: ' + (error?.message || String(error))
+                            );
+                        }
+                        break;
+                    }
+
+                    case 'copyLatestChatResponse': {
+                        const payload = buildClipboardPayloadForIde();
+                        if (!payload) {
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-copy-ide',
+                                'info',
+                                'Sin texto',
+                                '📋 Aún no hay respuesta de Jasper para copiar.'
+                            );
+                            break;
+                        }
+                        try {
+                            await vscode.env.clipboard.writeText(payload);
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-copy-ide',
+                                'done',
+                                'Copiado',
+                                '📋 Respuesta copiada. Pégala en el chat del IDE.'
+                            );
+                        } catch (error) {
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-copy-ide',
+                                'error',
+                                'Error',
+                                '❌ No pude copiar la respuesta: ' + (error?.message || String(error))
+                            );
+                        }
+                        break;
+                    }
+
+                    case 'regenerateChatResponse': {
+                        const userText = String(lastChatMessage?.content || '').trim();
+                        if (!userText) {
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-regenerate',
+                                'info',
+                                'Sin pregunta',
+                                '🔁 Primero haz una pregunta a Jasper.'
+                            );
+                            break;
+                        }
+                        try {
+                            const ideState = await adventureOracle.collectIdeState({
+                                gameState,
+                                lastChatMessage
+                            });
+                            const nextDigest = buildIdeDigest(ideState);
+                            const diffLabel = describeIdeDiff(lastIdeDigest, nextDigest, ideState);
+                            await runChatAdvice(currentPanel, userText, apiKey, model, {
+                                appendUserEntry: false,
+                                source: 'regenerate',
+                                ideStateOverride: ideState
+                            });
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-regenerate',
+                                diffLabel === 'sin cambios' ? 'info' : 'done',
+                                diffLabel === 'sin cambios' ? 'Sin diff' : 'Con diff',
+                                diffLabel === 'sin cambios'
+                                    ? '🔁 Jasper relee el mismo contexto; no hay diff nuevo en el IDE.'
+                                    : `🔁 Jasper relee el reino: ${diffLabel}`
+                            );
+                        } catch (error) {
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-regenerate',
+                                'error',
+                                'Error',
+                                '❌ Jasper no pudo recrear la respuesta: ' + (error?.message || String(error))
+                            );
+                        }
+                        break;
+                    }
+
+                    case 'runInspectCodeRitual': {
+                        try {
+                            const ideState = await adventureOracle.collectIdeState({
+                                gameState,
+                                lastChatMessage
+                            });
+                            const nextDigest = buildIdeDigest(ideState);
+                            const suggestion = buildCodeFocusSuggestion(ideState);
+                            if (!suggestion?.payload?.card) {
+                                sendChatActionState(
+                                    currentPanel,
+                                    'chat-inspect',
+                                    'info',
+                                    'Sin objetivo',
+                                    '🧭 Jasper no ha encontrado un pergamino técnico claro.'
+                                );
+                                break;
+                            }
+                            const diffLabel = describeIdeDiff(lastIdeDigest, nextDigest, ideState);
+                            const execution = await executeStructuredSuggestion(currentPanel, suggestion, narrationEnabled, apiKey, model);
+                            if (execution?.opened) {
+                                sendChatActionState(
+                                    currentPanel,
+                                    'chat-inspect',
+                                    'done',
+                                    'Abierto',
+                                    `🧭 Pergamino abierto: ${execution.targetLabel} · ${diffLabel}`
+                                );
+                            } else if (execution?.action === 'inspect_code' || execution?.action === 'attack_bug') {
+                                sendChatActionState(
+                                    currentPanel,
+                                    'chat-inspect',
+                                    'error',
+                                    'Sin abrir',
+                                    `🧭 Jasper fijó el foco, pero no pudo abrir ${execution.targetLabel || 'el pergamino'}`
+                                );
+                            } else {
+                                sendChatActionState(
+                                    currentPanel,
+                                    'chat-inspect',
+                                    'info',
+                                    'Sin accion',
+                                    `🧭 Ritual inspect_code revisado: ${suggestion.title} · ${diffLabel}`
+                                );
+                            }
+                        } catch (error) {
+                            sendChatActionState(
+                                currentPanel,
+                                'chat-inspect',
+                                'error',
+                                'Error',
+                                '❌ Jasper no pudo inspeccionar el código: ' + (error?.message || String(error))
+                            );
+                        }
+                        break;
+                    }
+
+                    case 'askJasperAboutDestiny': {
+                        try {
+                            const ideState = await adventureOracle.collectIdeState({
+                                gameState,
+                                lastChatMessage
+                            });
+                            const topCard = Array.isArray(ideState.adventure_cards) ? ideState.adventure_cards[0] : null;
+                            const prompt = topCard
+                                ? `teniendo en cuenta destino, ${topCard.title}: cual es el siguiente paso tecnico?`
+                                : 'teniendo en cuenta destino, cual es el siguiente paso tecnico?';
+                            lastChatMessage = {
+                                role: 'user',
+                                content: prompt
+                            };
+                            sendToPanel(currentPanel, 'appendChatUserMessage', { text: prompt });
+                            await runChatAdvice(currentPanel, prompt, apiKey, model, {
+                                appendUserEntry: true,
+                                source: 'destiny'
+                            });
+                            sendChatActionState(
+                                currentPanel,
+                                'destiny-send-to-jasper',
+                                'done',
+                                'Enviado',
+                                '🧭 Destino enviado a Jasper'
+                            );
+                        } catch (error) {
+                            sendChatActionState(
+                                currentPanel,
+                                'destiny-send-to-jasper',
+                                'error',
+                                'Error',
+                                '❌ No pude consultar a Jasper desde Destino: ' + (error?.message || String(error))
+                            );
+                        }
+                        break;
+                    }
+
+                    case 'chatFeedback': {
+                        const kind = message.kind === 'dislike' ? 'dislike' : 'like';
+                        lastDecisions.push({
+                            recordedAt: new Date().toISOString(),
+                            action: 'chat_feedback',
+                            title: kind === 'like' ? 'Respuesta util' : 'Respuesta poco util',
+                            feedback: kind,
+                            forUserText: lastAssistantReply?.userText || null
+                        });
+                        if (lastDecisions.length > 40) {
+                            lastDecisions = lastDecisions.slice(lastDecisions.length - 40);
+                        }
+                        sendToPanel(currentPanel, 'hitlToast', {
+                            text: kind === 'like' ? '👍 Jasper toma nota de que este consejo fue util.' : '👎 Jasper toma nota y afinara su proximo consejo.'
+                        });
                         break;
                     }
 
@@ -1166,7 +2061,15 @@ function activate(context) {
 
 // ─── Helper: enviar mensaje al panel ─────────────────────────────────────────
 function sendToPanel(panel, command, data = {}) {
-    panel?.webview.postMessage({ command, ...data });
+    mirrorPanelEvent(panel, command, data);
+    const delivered = panel?.webview.postMessage({ command, ...data });
+    // #region debug-point E:send-to-panel
+    reportExtensionDebug('E', 'extension.js:sendToPanel', 'message sent to panel', {
+        command,
+        delivered: typeof delivered === 'boolean' ? delivered : 'promise'
+    });
+    // #endregion debug-point E:send-to-panel
+    return delivered;
 }
 
 // ─── Helper: secuencia de subida de nivel ────────────────────────────────────
@@ -1188,30 +2091,121 @@ async function triggerLevelUp(panel, result, apiKey, model, gameState, narration
 }
 
 // ─── Generador del HTML del WebView ──────────────────────────────────────────
-function getWebviewContent(webview, extensionUri) {
+function getWebviewContent(webview, extensionUri, runtimeBridgeUri = null) {
     const nonce = getNonce();
 
-    const heroUri    = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'hero.png'));
-    const bugUri     = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'bug.png'));
+    const heroUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'hero.png'));
+    const heroAttackUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'hero_attack.png'));
+    const bugUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'bug.png'));
     const dungeonUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'dungeon.png'));
-    const phaserUri  = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'phaser.min.js'));
+    const flashscreenUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'fondo_flashscreen.png'));
+    const loginBgUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'fondo_login.png'));
+    const jasperUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'Jasper.png'));
+    const musicUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'music', 'Path_to_the_Serpent_Keep.mp3'));
+    const phaserUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'phaser.min.js'));
+    const modulesDir = vscode.Uri.joinPath(extensionUri, 'webview', 'modules');
+    const vscodeBridgeUri = webview.asWebviewUri(vscode.Uri.joinPath(modulesDir, 'vscode-bridge.js'));
+    const gameStateUri = webview.asWebviewUri(vscode.Uri.joinPath(modulesDir, 'game-state.js'));
+    const uiRendererUri = webview.asWebviewUri(vscode.Uri.joinPath(modulesDir, 'ui-renderer.js'));
+    const eventHandlersUri = webview.asWebviewUri(vscode.Uri.joinPath(modulesDir, 'event-handlers.js'));
+    const navigationUri = webview.asWebviewUri(vscode.Uri.joinPath(modulesDir, 'navigation.js'));
+    const phaserSceneUri = webview.asWebviewUri(vscode.Uri.joinPath(modulesDir, 'phaser-scene.js'));
+    const playerName = getConfig('playerName') || 'Aventurero';
 
     const csp = [
         `default-src 'none'`,
         `img-src ${webview.cspSource} https: data:`,
+        `media-src ${webview.cspSource} https: data:`,
         `script-src 'nonce-${nonce}' ${webview.cspSource}`,
         `style-src 'unsafe-inline'`,
         `font-src https://fonts.gstatic.com`,
         `connect-src ${webview.cspSource} https: https://api.groq.com http://127.0.0.1:7777`
     ].join('; ');
 
-    return getPanelHtml(nonce, csp, heroUri, bugUri, dungeonUri, phaserUri);
+    const html = getPanelHtml(
+        nonce,
+        csp,
+        heroUri,
+        heroAttackUri,
+        bugUri,
+        dungeonUri,
+        flashscreenUri,
+        loginBgUri,
+        jasperUri,
+        musicUri,
+        phaserUri,
+        vscodeBridgeUri,
+        gameStateUri,
+        uiRendererUri,
+        eventHandlersUri,
+        navigationUri,
+        phaserSceneUri,
+        playerName,
+        runtimeBridgeUri ? runtimeBridgeUri.toString() : '',
+        BUILD_STAMP
+    );
+
+    // #region debug-point A:html-shape
+    reportExtensionDebug('A', 'extension.js:getWebviewContent', 'generated webview html summary', {
+        htmlLength: html.length,
+        hasEarlyBoot: html.includes('bootstrap-inline-start'),
+        hasNavigationModuleTag: html.includes('navigation.js'),
+        hasBridgeModuleTag: html.includes('vscode-bridge.js'),
+        hasDomContentLoaded: html.includes('DOMContentLoaded'),
+        cspConnects7778: csp.includes('127.0.0.1:7778'),
+        buildStamp: BUILD_STAMP
+    });
+    // #endregion debug-point A:html-shape
+
+    return html;
 }
 
 // ─── HTML del panel (importado desde webview/panel.js) ───────────────────────
-function getPanelHtml(nonce, csp, heroUri, bugUri, dungeonUri, phaserUri) {
+function getPanelHtml(
+    nonce,
+    csp,
+    heroUri,
+    heroAttackUri,
+    bugUri,
+    dungeonUri,
+    flashscreenUri,
+    loginBgUri,
+    jasperUri,
+    musicUri,
+    phaserUri,
+    vscodeBridgeUri,
+    gameStateUri,
+    uiRendererUri,
+    eventHandlersUri,
+    navigationUri,
+    phaserSceneUri,
+    playerName,
+    runtimeBridgeUri,
+    buildStamp
+) {
     // El HTML completo se genera aquí para tener acceso a las URIs de los assets
-    return require('./webview/panel')(nonce, csp, heroUri.toString(), bugUri.toString(), dungeonUri.toString(), phaserUri.toString());
+    return require('./webview/panel')(
+        nonce,
+        csp,
+        heroUri.toString(),
+        heroAttackUri.toString(),
+        bugUri.toString(),
+        dungeonUri.toString(),
+        flashscreenUri.toString(),
+        loginBgUri.toString(),
+        jasperUri.toString(),
+        musicUri.toString(),
+        phaserUri.toString(),
+        vscodeBridgeUri.toString(),
+        gameStateUri.toString(),
+        uiRendererUri.toString(),
+        eventHandlersUri.toString(),
+        navigationUri.toString(),
+        phaserSceneUri.toString(),
+        playerName,
+        runtimeBridgeUri,
+        buildStamp
+    );
 }
 
 function deactivate() {

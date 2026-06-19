@@ -12,7 +12,9 @@ class AdventureOracle {
     }
 
     async collectIdeState({ gameState, lastChatMessage = null } = {}) {
-        const editor = vscode.window.activeTextEditor;
+        const editor = vscode.window.activeTextEditor
+            || vscode.window.visibleTextEditors.find((candidate) => candidate?.document && !candidate.document.isUntitled)
+            || null;
         const document = editor?.document;
         const workspaceFolder = document
             ? vscode.workspace.getWorkspaceFolder(document.uri)
@@ -83,7 +85,7 @@ class AdventureOracle {
         const availableQuests = quests.filter(q => !acceptedQuestIds.has(q.id));
         const hasCriticalWork = criticalDiagnostics.length > 0 || availableQuests.length > 0;
         const plantIsWithered = player.plant_health === 'marchita';
-        const canBuyPotion = player.gold >= 100;
+        const canBuyPotion = player.gold >= 30;
         const hasCoffeePotion = player.coffee_potions > 0;
         const potionCooldownMinutes = 15;
         const lastPotionAt = player.last_potion_at ? new Date(player.last_potion_at) : null;
