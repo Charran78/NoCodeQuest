@@ -12,6 +12,7 @@ module.exports = function generatePanel(
     dungeonUri,
     flashscreenUri,
     loginBgUri,
+    creditsBgUri,
     jasperUri,
     musicUri,
     phaserUri,
@@ -31,6 +32,7 @@ module.exports = function generatePanel(
     const dungeonUriSafe = JSON.stringify(dungeonUri);
     const flashscreenUriSafe = JSON.stringify(flashscreenUri);
     const loginBgUriSafe = JSON.stringify(loginBgUri);
+    const creditsBgUriSafe = JSON.stringify(creditsBgUri);
     const jasperUriSafe = JSON.stringify(jasperUri);
     const musicUriSafe = JSON.stringify(musicUri);
     const phaserUriSafe = JSON.stringify(phaserUri);
@@ -583,6 +585,197 @@ module.exports = function generatePanel(
       backdrop-filter: blur(3px);
       opacity: 0.42;
     }
+    .menu-back-btn {
+      padding: 10px 18px;
+      border: 1px solid rgba(255, 215, 0, 0.45);
+      background: rgba(13, 17, 23, 0.84);
+      color: var(--gold);
+      font-family: var(--font);
+      font-size: 10px;
+      letter-spacing: 0.5px;
+      border-radius: 999px;
+      cursor: pointer;
+      text-transform: uppercase;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.28);
+    }
+    .menu-back-btn:hover {
+      background: rgba(255, 215, 0, 0.12);
+    }
+    #credits-floating-cta {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 45;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid rgba(255, 215, 0, 0.36);
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(64, 36, 8, 0.96), rgba(27, 18, 8, 0.94));
+      color: #ffe7a6;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.03), 0 0 18px rgba(255, 184, 77, 0.24);
+      cursor: pointer;
+      user-select: none;
+      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+    #credits-floating-cta:hover,
+    #credits-floating-cta:focus-visible {
+      transform: translateY(-2px) scale(1.01);
+      border-color: rgba(255, 215, 0, 0.62);
+      background: linear-gradient(180deg, rgba(89, 48, 10, 0.98), rgba(37, 23, 10, 0.96));
+      outline: none;
+    }
+    #credits-floating-cta.is-nudging {
+      animation: creditsBubblePulse 1.5s ease-in-out 2;
+    }
+    #credits-floating-icon {
+      width: 20px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: rgba(255, 215, 0, 0.14);
+      color: var(--gold);
+      font-size: 11px;
+      line-height: 1;
+      box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.18);
+      flex-shrink: 0;
+    }
+    #credits-floating-copy {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    #credits-floating-text {
+      max-width: 0;
+      opacity: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      transition: max-width 180ms ease, opacity 180ms ease;
+      color: #fff3cc;
+      font-size: 10px;
+      letter-spacing: 0.3px;
+    }
+    #credits-floating-cta:hover #credits-floating-text,
+    #credits-floating-cta:focus-visible #credits-floating-text,
+    #credits-floating-cta.is-expanded #credits-floating-text {
+      max-width: 260px;
+      opacity: 1;
+    }
+    #credits-floating-badge {
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 215, 0, 0.24);
+      background: rgba(255, 215, 0, 0.10);
+      color: var(--gold);
+      font-size: 9px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      flex-shrink: 0;
+    }
+    #screen-credits::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(5, 7, 10, 0.18) 0%, rgba(5, 7, 10, 0.22) 48%, rgba(5, 7, 10, 0.78) 100%);
+      pointer-events: none;
+    }
+    #credits-topbar {
+      position: absolute;
+      top: 18px;
+      right: 20px;
+      z-index: 2;
+    }
+    #credits-links-panel {
+      position: absolute;
+      left: 50%;
+      bottom: 6%;
+      transform: translateX(-50%);
+      width: min(92%, 980px);
+      z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .credits-link-card {
+      min-height: 170px;
+      border: 1px solid rgba(255, 215, 0, 0.20);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(13, 17, 23, 0.90), rgba(16, 12, 8, 0.94));
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .credits-link-kicker {
+      color: #ffe08a;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .credits-link-title {
+      color: #fff4cf;
+      font-size: 13px;
+      font-weight: bold;
+      line-height: 1.35;
+    }
+    .credits-link-copy {
+      color: #d9e7f2;
+      font-size: 10px;
+      line-height: 1.5;
+    }
+    .credits-link-open {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 215, 0, 0.42);
+      border-radius: 10px;
+      background: rgba(255, 215, 0, 0.10);
+      color: #ffe7a6;
+      font-family: var(--font);
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.4px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .credits-link-open:hover,
+    .credits-link-open:focus-visible {
+      background: rgba(255, 215, 0, 0.18);
+      border-color: rgba(255, 215, 0, 0.64);
+      outline: none;
+    }
+    .credits-link-url {
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 8px;
+      line-height: 1.45;
+      word-break: break-all;
+    }
+    @keyframes creditsBubblePulse {
+      0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.03), 0 0 18px rgba(255, 184, 77, 0.24); }
+      50% { transform: translateY(-3px) scale(1.03); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(255, 255, 255, 0.04), 0 0 28px rgba(255, 215, 0, 0.38); }
+    }
+    @media (max-width: 960px) {
+      #credits-links-panel {
+        grid-template-columns: 1fr;
+        width: min(92%, 560px);
+        bottom: 4%;
+      }
+      .credits-link-card {
+        min-height: 0;
+      }
+      #credits-floating-text {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -604,6 +797,7 @@ module.exports = function generatePanel(
           dungeon: ${dungeonUriSafe},
           flashscreen: ${flashscreenUriSafe},
           login: ${loginBgUriSafe},
+          credits: ${creditsBgUriSafe},
           jasper: ${jasperUriSafe},
           music: ${musicUriSafe}
         }
@@ -1059,6 +1253,7 @@ module.exports = function generatePanel(
           images: {
             flashscreen: window.AppConfig.assets.flashscreen,
             login: window.AppConfig.assets.login,
+            credits: window.AppConfig.assets.credits,
             dungeon: window.AppConfig.assets.dungeon
           }
         });

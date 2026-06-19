@@ -73,6 +73,27 @@ const EventHandlers = {
             return;
         }
 
+        if (target.closest('#btn-open-credits')) {
+            if (window.Navigation && typeof window.Navigation.openCredits === 'function') {
+                window.Navigation.openCredits('login');
+            }
+            return;
+        }
+
+        if (target.closest('#btn-credits-back')) {
+            if (window.Navigation && typeof window.Navigation.closeCredits === 'function') {
+                window.Navigation.closeCredits();
+            }
+            return;
+        }
+
+        if (target.closest('#credits-floating-cta')) {
+            if (window.Navigation && typeof window.Navigation.openCredits === 'function') {
+                window.Navigation.openCredits('game');
+            }
+            return;
+        }
+
         if (target.closest('#btn-market')) {
             UI.switchTab('shop');
             return;
@@ -287,6 +308,15 @@ const EventHandlers = {
             const index = parseInt(chronicleEntry.getAttribute('data-chronicle-index'), 10);
             if (!isNaN(index)) this.handleChronicleEntry(index);
             return;
+        }
+
+        const externalUrlBtn = target.closest('[data-external-url]');
+        if (externalUrlBtn) {
+            e.preventDefault();
+            const url = externalUrlBtn.getAttribute('data-external-url');
+            if (url) {
+                VSCodeBridge.postMessage({ command: 'openExternalUrl', url });
+            }
         }
     },
     

@@ -9,6 +9,8 @@ const Navigation = {
     phaserRuntimePromise: null,
     splashDurationMs: 5200,
     splashMessageIntervalMs: 950,
+    creditsBubbleReminderMs: 10 * 60 * 1000,
+    creditsBubbleFocusCooldownMs: 45000,
     flashMessages: [
         'Cargando... arrastrando y soltando scripts visuales',
         'Generando enemigos... sin una sola linea de codigo',
@@ -21,14 +23,46 @@ const Navigation = {
     images: {
         flashscreen: null,
         login: null,
+        credits: null,
         dungeon: null
     },
     playerName: 'Aventurero',
+    lastNonCreditsScreen: 'login',
+    creditsBubbleTimer: null,
+    creditsBubbleCollapseTimer: null,
+    creditsBubbleLastFocusNudgeAt: 0,
+    creditLinks: [
+        {
+            id: 'repo',
+            kicker: 'Desarrollo activo',
+            title: 'NoCodeQuest sigue creciendo en GitHub',
+            copy: 'Si quieres seguir la aventura desde cerca, entra al repo y mira los cambios, ideas y siguientes hechizos.',
+            cta: 'Ir al repo',
+            url: 'https://github.com/Charran78/NoCodeQuest'
+        },
+        {
+            id: 'market',
+            kicker: 'Instalacion',
+            title: 'Ver la extension publicada en Open VSX',
+            copy: 'Si te viene bien tenerla localizada fuera del repo, aqui tienes la ficha del market para compartirla o revisarla.',
+            cta: 'Abrir Open VSX',
+            url: 'https://open-vsx.org/extension/pedromencias/nocodequest'
+        },
+        {
+            id: 'support',
+            kicker: 'Apoyo directo',
+            title: 'Invitar a un cafe y apoyar el desarrollo',
+            copy: 'La aventura sigue en desarrollo activo. Si te esta gustando, un cafe ayuda a seguir picando codigo y puliendo ideas.',
+            cta: 'Apoyar al dev',
+            url: 'https://buymeacoffee.com/beyonddigiv'
+        }
+    ],
 
     init(config) {
         if (config && config.images) this.images = { ...this.images, ...config.images };
         if (config && config.playerName) this.playerName = config.playerName;
         this.createScreens();
+        this.setupCreditsBubble();
         this.showScreen('flashscreen');
     },
 
@@ -38,6 +72,7 @@ const Navigation = {
         root.innerHTML = '';
         root.appendChild(this.buildFlashScreen());
         root.appendChild(this.buildLoginScreen());
+        root.appendChild(this.buildCreditsScreen());
         root.appendChild(this.buildGameScreen());
     },
 
@@ -103,10 +138,61 @@ const Navigation = {
         start.style.cssText = 'padding:14px 48px;font-size:18px;font-weight:bold;color:#00d4ff;background:transparent;border:2px solid #00d4ff;border-radius:8px;cursor:pointer;text-transform:uppercase;letter-spacing:4px;animation:reverberate 2s ease-in-out infinite;text-shadow:0 0 10px rgba(0,212,255,.5);';
         start.addEventListener('click', () => this.showScreen('game'));
 
+        const credits = document.createElement('button');
+        credits.id = 'btn-open-credits';
+        credits.type = 'button';
+        credits.textContent = 'Creditos';
+        credits.className = 'menu-back-btn';
+        credits.style.cssText = 'margin-top:14px;';
+
         box.appendChild(name);
         box.appendChild(pass);
         box.appendChild(start);
+        box.appendChild(credits);
         screen.appendChild(box);
+        return screen;
+    },
+
+    buildCreditsScreen() {
+        const screen = document.createElement('div');
+        screen.id = 'screen-credits';
+        screen.className = 'nav-screen';
+        screen.style.cssText = [
+            'background-color:#0d1117',
+            this.images.credits ? `background-image:url('${this.images.credits}')` : '',
+            'background-position:center',
+            'background-repeat:no-repeat',
+            'background-size:contain'
+        ].join(';');
+
+        const topbar = document.createElement('div');
+        topbar.id = 'credits-topbar';
+
+        const back = document.createElement('button');
+        back.id = 'btn-credits-back';
+        back.type = 'button';
+        back.className = 'menu-back-btn';
+        back.textContent = 'Volver';
+        topbar.appendChild(back);
+
+        const panel = document.createElement('div');
+        panel.id = 'credits-links-panel';
+        panel.innerHTML = this.creditLinks.map((link) => `
+            <div class="credits-link-card" data-credit-card="${this.escapeAttr(link.id)}">
+                <div>
+                    <div class="credits-link-kicker">${this.escapeHtml(link.kicker)}</div>
+                    <div class="credits-link-title">${this.escapeHtml(link.title)}</div>
+                </div>
+                <div class="credits-link-copy">${this.escapeHtml(link.copy)}</div>
+                <div>
+                    <button class="credits-link-open" type="button" data-external-url="${this.escapeAttr(link.url)}">${this.escapeHtml(link.cta)}</button>
+                    <div class="credits-link-url">${this.escapeHtml(link.url)}</div>
+                </div>
+            </div>
+        `).join('');
+
+        screen.appendChild(topbar);
+        screen.appendChild(panel);
         return screen;
     },
 
@@ -243,6 +329,13 @@ const Navigation = {
                         <button id="chronicle-modal-close" class="modal-btn" type="button">Cerrar</button>
                     </div>
                 </div>
+                <button id="credits-floating-cta" type="button" title="Colabora con el desarrollador y abre la pantalla de creditos">
+                    <span id="credits-floating-icon">+</span>
+                    <span id="credits-floating-copy">
+                        <span id="credits-floating-text">Invita un cafe al bardo</span>
+                        <span id="credits-floating-badge">Dev</span>
+                    </span>
+                </button>
                 <div id="floating-message"></div>
             </div>
         `;
@@ -272,6 +365,9 @@ const Navigation = {
         } else if (screenName === 'login') {
             const screen = document.getElementById('screen-login');
             if (screen) screen.style.display = 'block';
+        } else if (screenName === 'credits') {
+            const screen = document.getElementById('screen-credits');
+            if (screen) screen.style.display = 'block';
         } else if (screenName === 'game') {
             const screen = document.getElementById('screen-game');
             if (screen) {
@@ -280,7 +376,21 @@ const Navigation = {
             }
         }
 
+        if (screenName !== 'credits') {
+            this.lastNonCreditsScreen = screenName;
+        }
+        this.updateCreditsBubbleVisibility(screenName);
         this.currentScreen = screenName;
+    },
+
+    openCredits(sourceScreen) {
+        const origin = sourceScreen || (this.currentScreen && this.currentScreen !== 'credits' ? this.currentScreen : this.lastNonCreditsScreen || 'login');
+        this.lastNonCreditsScreen = origin;
+        this.showScreen('credits');
+    },
+
+    closeCredits() {
+        this.showScreen(this.lastNonCreditsScreen || 'login');
     },
 
     startFlashMessages() {
@@ -347,6 +457,63 @@ const Navigation = {
             });
 
         return this.phaserRuntimePromise;
+    },
+
+    setupCreditsBubble() {
+        const bubble = document.getElementById('credits-floating-cta');
+        const gameUi = document.getElementById('game-ui');
+        if (!bubble) return;
+
+        bubble.addEventListener('mouseenter', () => this.nudgeCreditsBubble('hover'));
+        bubble.addEventListener('focus', () => this.nudgeCreditsBubble('focus'));
+
+        if (gameUi) {
+            gameUi.addEventListener('mouseenter', () => {
+                const now = Date.now();
+                if ((now - this.creditsBubbleLastFocusNudgeAt) < this.creditsBubbleFocusCooldownMs) return;
+                this.creditsBubbleLastFocusNudgeAt = now;
+                this.nudgeCreditsBubble('focus');
+            });
+        }
+
+        if (this.creditsBubbleTimer) {
+            clearInterval(this.creditsBubbleTimer);
+        }
+        this.creditsBubbleTimer = window.setInterval(() => {
+            if (this.currentScreen === 'game') {
+                this.nudgeCreditsBubble('timer');
+            }
+        }, this.creditsBubbleReminderMs);
+    },
+
+    nudgeCreditsBubble(reason) {
+        const bubble = document.getElementById('credits-floating-cta');
+        if (!bubble) return;
+        bubble.classList.add('is-expanded', 'is-nudging');
+        bubble.dataset.nudgeReason = reason || 'manual';
+        window.clearTimeout(this.creditsBubbleCollapseTimer);
+        this.creditsBubbleCollapseTimer = window.setTimeout(() => {
+            bubble.classList.remove('is-expanded', 'is-nudging');
+        }, reason === 'timer' ? 6200 : 3600);
+    },
+
+    updateCreditsBubbleVisibility(screenName) {
+        const bubble = document.getElementById('credits-floating-cta');
+        if (!bubble) return;
+        bubble.style.display = screenName === 'game' ? 'inline-flex' : 'none';
+    },
+
+    escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+
+    escapeAttr(value) {
+        return this.escapeHtml(value).replace(/`/g, '');
     },
 
     initGame() {

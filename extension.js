@@ -1375,6 +1375,30 @@ function activate(context) {
                         break;
                     }
 
+                    case 'openExternalUrl': {
+                        const rawUrl = String(message.url || '').trim();
+                        if (!rawUrl || !/^https:\/\//i.test(rawUrl)) {
+                            sendToPanel(currentPanel, 'hitlToast', {
+                                text: '⚠️ Enlace externo no valido.',
+                                color: '#ffb3b3'
+                            });
+                            break;
+                        }
+                        try {
+                            await vscode.env.openExternal(vscode.Uri.parse(rawUrl));
+                            sendToPanel(currentPanel, 'hitlToast', {
+                                text: '🌍 Enlace abierto en tu navegador.',
+                                color: '#00d4ff'
+                            });
+                        } catch (error) {
+                            sendToPanel(currentPanel, 'hitlToast', {
+                                text: '❌ No pude abrir el enlace: ' + (error?.message || String(error)),
+                                color: '#ffb3b3'
+                            });
+                        }
+                        break;
+                    }
+
                     case 'refreshIdeContext': {
                         try {
                             const ideState = await adventureOracle.collectIdeState({
@@ -2100,6 +2124,7 @@ function getWebviewContent(webview, extensionUri, runtimeBridgeUri = null) {
     const dungeonUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'dungeon.png'));
     const flashscreenUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'fondo_flashscreen.png'));
     const loginBgUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'fondo_login.png'));
+    const creditsBgUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'fondo_creditos.png'));
     const jasperUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'Jasper.png'));
     const musicUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'music', 'Path_to_the_Serpent_Keep.mp3'));
     const phaserUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'phaser.min.js'));
@@ -2131,6 +2156,7 @@ function getWebviewContent(webview, extensionUri, runtimeBridgeUri = null) {
         dungeonUri,
         flashscreenUri,
         loginBgUri,
+        creditsBgUri,
         jasperUri,
         musicUri,
         phaserUri,
@@ -2170,6 +2196,7 @@ function getPanelHtml(
     dungeonUri,
     flashscreenUri,
     loginBgUri,
+    creditsBgUri,
     jasperUri,
     musicUri,
     phaserUri,
@@ -2193,6 +2220,7 @@ function getPanelHtml(
         dungeonUri.toString(),
         flashscreenUri.toString(),
         loginBgUri.toString(),
+        creditsBgUri.toString(),
         jasperUri.toString(),
         musicUri.toString(),
         phaserUri.toString(),
