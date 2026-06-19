@@ -27,10 +27,10 @@ const Navigation = {
         dungeon: null
     },
     playerName: 'Aventurero',
-    lastNonCreditsScreen: 'login',
+    lastNonOverlayScreen: 'login',
     creditsBubbleTimer: null,
-    creditsBubbleCollapseTimer: null,
     creditsBubbleLastFocusNudgeAt: 0,
+    devSupportUrl: 'https://buymeacoffee.com/beyonddigiv',
     creditLinks: [
         {
             id: 'repo',
@@ -73,6 +73,7 @@ const Navigation = {
         root.appendChild(this.buildFlashScreen());
         root.appendChild(this.buildLoginScreen());
         root.appendChild(this.buildCreditsScreen());
+        root.appendChild(this.buildSupportScreen());
         root.appendChild(this.buildGameScreen());
     },
 
@@ -119,7 +120,7 @@ const Navigation = {
 
         const box = document.createElement('div');
         box.id = 'login-box';
-        box.style.cssText = 'position:absolute;left:50%;bottom:35%;transform:translateX(-50%);width:min(90%,460px);text-align:center;padding:0 16px;';
+        box.style.cssText = 'position:absolute;left:50%;bottom:17%;transform:translateX(-50%);width:min(90%,460px);text-align:center;padding:0 16px;';
 
         const name = document.createElement('div');
         name.id = 'login-name';
@@ -135,7 +136,7 @@ const Navigation = {
         start.id = 'btn-start-game';
         start.type = 'button';
         start.textContent = 'Start';
-        start.style.cssText = 'padding:14px 48px;font-size:18px;font-weight:bold;color:#00d4ff;background:transparent;border:2px solid #00d4ff;border-radius:8px;cursor:pointer;text-transform:uppercase;letter-spacing:4px;animation:reverberate 2s ease-in-out infinite;text-shadow:0 0 10px rgba(0,212,255,.5);';
+        start.style.cssText = 'display:block;margin:0 auto;padding:14px 48px;font-size:18px;font-weight:bold;color:#00d4ff;background:transparent;border:2px solid #00d4ff;border-radius:8px;cursor:pointer;text-transform:uppercase;letter-spacing:4px;animation:reverberate 2s ease-in-out infinite;text-shadow:0 0 10px rgba(0,212,255,.5);';
         start.addEventListener('click', () => this.showScreen('game'));
 
         const credits = document.createElement('button');
@@ -143,7 +144,8 @@ const Navigation = {
         credits.type = 'button';
         credits.textContent = 'Creditos';
         credits.className = 'menu-back-btn';
-        credits.style.cssText = 'margin-top:14px;';
+        credits.style.cssText = 'display:block;margin:44px auto 0;';
+        credits.addEventListener('click', () => this.openCredits('login'));
 
         box.appendChild(name);
         box.appendChild(pass);
@@ -173,12 +175,34 @@ const Navigation = {
         back.type = 'button';
         back.className = 'menu-back-btn';
         back.textContent = 'Volver';
+        back.addEventListener('click', () => this.closeOverlay());
+        topbar.appendChild(back);
+
+        screen.appendChild(topbar);
+        return screen;
+    },
+
+    buildSupportScreen() {
+        const screen = document.createElement('div');
+        screen.id = 'screen-support';
+        screen.className = 'nav-screen';
+        screen.style.cssText = 'background:radial-gradient(circle at top, rgba(42, 24, 10, 0.96), rgba(13, 17, 23, 0.98) 55%, rgba(10, 12, 18, 1) 100%);';
+
+        const topbar = document.createElement('div');
+        topbar.id = 'credits-topbar';
+
+        const back = document.createElement('button');
+        back.id = 'btn-support-back';
+        back.type = 'button';
+        back.className = 'menu-back-btn';
+        back.textContent = 'Volver';
+        back.addEventListener('click', () => this.closeOverlay());
         topbar.appendChild(back);
 
         const panel = document.createElement('div');
-        panel.id = 'credits-links-panel';
+        panel.id = 'support-links-panel';
         panel.innerHTML = this.creditLinks.map((link) => `
-            <div class="credits-link-card" data-credit-card="${this.escapeAttr(link.id)}">
+            <div class="credits-link-card${link.id === 'support' ? ' credits-link-card-support' : ''}" data-credit-card="${this.escapeAttr(link.id)}">
                 <div>
                     <div class="credits-link-kicker">${this.escapeHtml(link.kicker)}</div>
                     <div class="credits-link-title">${this.escapeHtml(link.title)}</div>
@@ -329,13 +353,10 @@ const Navigation = {
                         <button id="chronicle-modal-close" class="modal-btn" type="button">Cerrar</button>
                     </div>
                 </div>
-                <button id="credits-floating-cta" type="button" title="Colabora con el desarrollador y abre la pantalla de creditos">
-                    <span id="credits-floating-icon">+</span>
-                    <span id="credits-floating-copy">
-                        <span id="credits-floating-text">Invita un cafe al bardo</span>
-                        <span id="credits-floating-badge">Dev</span>
-                    </span>
-                </button>
+                <div id="credits-floating-dock" aria-label="Accesos flotantes de creditos y apoyo al dev">
+                    <button id="credits-floating-cta" type="button" title="Abrir pantalla de creditos">CREDITOS</button>
+                    <button id="credits-dev-cta" type="button" title="Invita un cafe al bardo">☕CAFÉ</button>
+                </div>
                 <div id="floating-message"></div>
             </div>
         `;
@@ -368,6 +389,9 @@ const Navigation = {
         } else if (screenName === 'credits') {
             const screen = document.getElementById('screen-credits');
             if (screen) screen.style.display = 'block';
+        } else if (screenName === 'support') {
+            const screen = document.getElementById('screen-support');
+            if (screen) screen.style.display = 'block';
         } else if (screenName === 'game') {
             const screen = document.getElementById('screen-game');
             if (screen) {
@@ -376,21 +400,27 @@ const Navigation = {
             }
         }
 
-        if (screenName !== 'credits') {
-            this.lastNonCreditsScreen = screenName;
+        if (screenName !== 'credits' && screenName !== 'support') {
+            this.lastNonOverlayScreen = screenName;
         }
         this.updateCreditsBubbleVisibility(screenName);
         this.currentScreen = screenName;
     },
 
     openCredits(sourceScreen) {
-        const origin = sourceScreen || (this.currentScreen && this.currentScreen !== 'credits' ? this.currentScreen : this.lastNonCreditsScreen || 'login');
-        this.lastNonCreditsScreen = origin;
+        const origin = sourceScreen || ((this.currentScreen && this.currentScreen !== 'credits' && this.currentScreen !== 'support') ? this.currentScreen : this.lastNonOverlayScreen || 'login');
+        this.lastNonOverlayScreen = origin;
         this.showScreen('credits');
     },
 
-    closeCredits() {
-        this.showScreen(this.lastNonCreditsScreen || 'login');
+    openSupport(sourceScreen) {
+        const origin = sourceScreen || ((this.currentScreen && this.currentScreen !== 'support' && this.currentScreen !== 'credits') ? this.currentScreen : this.lastNonOverlayScreen || 'login');
+        this.lastNonOverlayScreen = origin;
+        this.showScreen('support');
+    },
+
+    closeOverlay() {
+        this.showScreen(this.lastNonOverlayScreen || 'login');
     },
 
     startFlashMessages() {
@@ -460,12 +490,20 @@ const Navigation = {
     },
 
     setupCreditsBubble() {
-        const bubble = document.getElementById('credits-floating-cta');
+        const dock = document.getElementById('credits-floating-dock');
+        const creditsBtn = document.getElementById('credits-floating-cta');
+        const devBtn = document.getElementById('credits-dev-cta');
         const gameUi = document.getElementById('game-ui');
-        if (!bubble) return;
+        if (!dock) return;
 
-        bubble.addEventListener('mouseenter', () => this.nudgeCreditsBubble('hover'));
-        bubble.addEventListener('focus', () => this.nudgeCreditsBubble('focus'));
+        if (creditsBtn) {
+            creditsBtn.addEventListener('click', () => this.openCredits('game'));
+        }
+        if (devBtn) {
+            devBtn.addEventListener('click', () => this.openSupport('game'));
+            devBtn.addEventListener('mouseenter', () => this.nudgeCreditsBubble('hover'));
+            devBtn.addEventListener('focus', () => this.nudgeCreditsBubble('focus'));
+        }
 
         if (gameUi) {
             gameUi.addEventListener('mouseenter', () => {
@@ -487,20 +525,21 @@ const Navigation = {
     },
 
     nudgeCreditsBubble(reason) {
-        const bubble = document.getElementById('credits-floating-cta');
-        if (!bubble) return;
-        bubble.classList.add('is-expanded', 'is-nudging');
-        bubble.dataset.nudgeReason = reason || 'manual';
-        window.clearTimeout(this.creditsBubbleCollapseTimer);
-        this.creditsBubbleCollapseTimer = window.setTimeout(() => {
-            bubble.classList.remove('is-expanded', 'is-nudging');
-        }, reason === 'timer' ? 6200 : 3600);
+        const devBtn = document.getElementById('credits-dev-cta');
+        if (!devBtn) return;
+        devBtn.classList.remove('is-nudging');
+        devBtn.offsetHeight;
+        devBtn.classList.add('is-nudging');
+        devBtn.dataset.nudgeReason = reason || 'manual';
+        window.setTimeout(() => {
+            devBtn.classList.remove('is-nudging');
+        }, 1800);
     },
 
     updateCreditsBubbleVisibility(screenName) {
-        const bubble = document.getElementById('credits-floating-cta');
-        if (!bubble) return;
-        bubble.style.display = screenName === 'game' ? 'inline-flex' : 'none';
+        const dock = document.getElementById('credits-floating-dock');
+        if (!dock) return;
+        dock.style.display = screenName === 'game' ? 'flex' : 'none';
     },
 
     escapeHtml(value) {
@@ -537,8 +576,8 @@ const Navigation = {
 
             this.ensurePhaserRuntime()
                 .then(() => {
-                    if (window.PreloadedAssets && window.PreloadedAssets.ready) {
-                        return window.PreloadedAssets.ready.then(() => bootPhaser()).catch(() => bootPhaser());
+                    if (window.PreloadedAssets && typeof window.PreloadedAssets.ensureReady === 'function') {
+                        return window.PreloadedAssets.ensureReady().then(() => bootPhaser()).catch(() => bootPhaser());
                     }
                     bootPhaser();
                     return null;

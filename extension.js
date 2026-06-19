@@ -178,6 +178,76 @@ function getConfig(key) {
     return vscode.workspace.getConfiguration('nocodequest').get(key);
 }
 
+function getFastBootHtml(webview, extensionUri, buildStamp = 'unknown-build') {
+    const flashscreenUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'fondo_flashscreen.png'));
+    const safeBuildStamp = String(buildStamp || 'unknown-build')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #0d1117;
+      color: #fff;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    #boot-splash {
+      position: fixed;
+      inset: 0;
+      background-color: #0d1117;
+      background-image: url('${flashscreenUri}');
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: contain;
+    }
+    #boot-message {
+      position: absolute;
+      left: 50%;
+      bottom: 20%;
+      transform: translateX(-50%);
+      width: min(80%, 760px);
+      text-align: center;
+      padding: 0 16px;
+      font-size: 18px;
+      font-weight: bold;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+    }
+    #boot-stamp {
+      position: fixed;
+      top: 52px;
+      left: 12px;
+      z-index: 12;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 212, 255, 0.22);
+      background: rgba(13, 22, 38, 0.34);
+      color: #00d4ff;
+      font-size: 8px;
+      letter-spacing: 0.3px;
+      opacity: 0.42;
+    }
+  </style>
+</head>
+<body>
+  <div id="boot-splash">
+    <div id="boot-message">Cargando... arrastrando y soltando scripts visuales</div>
+  </div>
+  <div id="boot-stamp">BUILD ${safeBuildStamp}</div>
+</body>
+</html>`;
+}
+
 function buildIdeSummary(ideState) {
     const diagnostics = Array.isArray(ideState?.diagnostics) ? ideState.diagnostics : [];
     const modifiedFiles = Array.isArray(ideState?.modified_files) ? ideState.modified_files : [];
@@ -1249,20 +1319,26 @@ function activate(context) {
             }
         );
 
-        registerRuntimeMirror(
-            currentPanel,
-            runtimeMirrorPath,
-            buildRuntimeBootstrap(gameState, currentActiveQuests)
+        currentPanel.webview.html = getFastBootHtml(
+            currentPanel.webview,
+            context.extensionUri,
+            BUILD_STAMP
         );
+
+        // #region debug-point A:fast-boot-assigned
+        reportExtensionDebug('A', 'extension.js:startCommand', 'fast boot html assigned', {
+            hasPanel: !!currentPanel
+        });
+        // #endregion debug-point A:fast-boot-assigned
 
         const runtimeMirrorUri = runtimeMirrorPath
             ? currentPanel.webview.asWebviewUri(vscode.Uri.file(runtimeMirrorPath))
             : null;
 
-        currentPanel.webview.html = getWebviewContent(
-            currentPanel.webview,
-            context.extensionUri,
-            runtimeMirrorUri
+        registerRuntimeMirror(
+            currentPanel,
+            runtimeMirrorPath,
+            buildRuntimeBootstrap(gameState, currentActiveQuests)
         );
 
         // #region debug-point A:html-assigned
@@ -2042,6 +2118,15 @@ function activate(context) {
         });
 
         // ── Limpieza al cerrar el panel ───────────────────────────────────────
+        setTimeout(() => {
+            if (!currentPanel) return;
+            currentPanel.webview.html = getWebviewContent(
+                currentPanel.webview,
+                context.extensionUri,
+                runtimeMirrorUri
+            );
+        }, 0);
+
         currentPanel.onDidDispose(() => {
             currentPanel = undefined;
             bossManager.reset();

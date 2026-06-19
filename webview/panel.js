@@ -601,88 +601,44 @@ module.exports = function generatePanel(
     .menu-back-btn:hover {
       background: rgba(255, 215, 0, 0.12);
     }
-    #credits-floating-cta {
+    #credits-floating-dock {
       position: fixed;
-      right: 18px;
-      bottom: 18px;
+      right: 10px;
+      bottom: 10px;
       z-index: 45;
-      display: inline-flex;
+      display: none;
+      flex-direction: row;
       align-items: center;
-      gap: 10px;
-      padding: 12px 14px;
-      border: 1px solid rgba(255, 215, 0, 0.36);
+      justify-content: flex-end;
+      gap: 5px;
+    }
+    #credits-floating-cta,
+    #credits-dev-cta {
+      min-width: 62px;
+      padding: 6px 8px;
       border-radius: 999px;
-      background: linear-gradient(180deg, rgba(64, 36, 8, 0.96), rgba(27, 18, 8, 0.94));
+      border: 1px solid rgba(255, 215, 0, 0.34);
+      background: linear-gradient(180deg, rgba(64, 36, 8, 0.94), rgba(27, 18, 8, 0.92));
       color: #ffe7a6;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.03), 0 0 18px rgba(255, 184, 77, 0.24);
+      font-family: var(--font);
+      font-size: 7px;
+      font-weight: bold;
+      letter-spacing: 0.35px;
       cursor: pointer;
-      user-select: none;
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.03);
       transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
     }
     #credits-floating-cta:hover,
-    #credits-floating-cta:focus-visible {
-      transform: translateY(-2px) scale(1.01);
-      border-color: rgba(255, 215, 0, 0.62);
+    #credits-floating-cta:focus-visible,
+    #credits-dev-cta:hover,
+    #credits-dev-cta:focus-visible {
+      transform: translateY(-1px);
+      border-color: rgba(255, 215, 0, 0.58);
       background: linear-gradient(180deg, rgba(89, 48, 10, 0.98), rgba(37, 23, 10, 0.96));
       outline: none;
     }
-    #credits-floating-cta.is-nudging {
-      animation: creditsBubblePulse 1.5s ease-in-out 2;
-    }
-    #credits-floating-icon {
-      width: 20px;
-      height: 20px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      background: rgba(255, 215, 0, 0.14);
-      color: var(--gold);
-      font-size: 11px;
-      line-height: 1;
-      box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.18);
-      flex-shrink: 0;
-    }
-    #credits-floating-copy {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-    }
-    #credits-floating-text {
-      max-width: 0;
-      opacity: 0;
-      overflow: hidden;
-      white-space: nowrap;
-      transition: max-width 180ms ease, opacity 180ms ease;
-      color: #fff3cc;
-      font-size: 10px;
-      letter-spacing: 0.3px;
-    }
-    #credits-floating-cta:hover #credits-floating-text,
-    #credits-floating-cta:focus-visible #credits-floating-text,
-    #credits-floating-cta.is-expanded #credits-floating-text {
-      max-width: 260px;
-      opacity: 1;
-    }
-    #credits-floating-badge {
-      padding: 3px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 215, 0, 0.24);
-      background: rgba(255, 215, 0, 0.10);
-      color: var(--gold);
-      font-size: 9px;
-      font-weight: bold;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      flex-shrink: 0;
-    }
-    #screen-credits::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, rgba(5, 7, 10, 0.18) 0%, rgba(5, 7, 10, 0.22) 48%, rgba(5, 7, 10, 0.78) 100%);
-      pointer-events: none;
+    #credits-dev-cta.is-nudging {
+      animation: creditsBubblePulse 1.3s ease-in-out 1;
     }
     #credits-topbar {
       position: absolute;
@@ -690,28 +646,53 @@ module.exports = function generatePanel(
       right: 20px;
       z-index: 2;
     }
-    #credits-links-panel {
+    #support-links-panel {
       position: absolute;
       left: 50%;
-      bottom: 6%;
+      top: 50%;
       transform: translateX(-50%);
-      width: min(92%, 980px);
+      translate: 0 -50%;
+      width: min(94%, 920px);
       z-index: 2;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
+      gap: 12px;
     }
     .credits-link-card {
-      min-height: 170px;
+      min-height: 158px;
       border: 1px solid rgba(255, 215, 0, 0.20);
-      border-radius: 16px;
-      background: linear-gradient(180deg, rgba(13, 17, 23, 0.90), rgba(16, 12, 8, 0.94));
-      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
-      padding: 16px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(13, 17, 23, 0.76), rgba(16, 12, 8, 0.84));
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
+      padding: 12px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
+      backdrop-filter: blur(3px);
+    }
+    .credits-link-card-support {
+      border-color: rgba(255, 215, 0, 0.62);
+      background: linear-gradient(180deg, rgba(58, 34, 10, 0.92), rgba(24, 15, 8, 0.94));
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 215, 0, 0.14), 0 0 18px rgba(255, 196, 77, 0.24);
+      animation: supportCardPulse 1.8s ease-in-out infinite;
+    }
+    .credits-link-card-support .credits-link-kicker {
+      color: #fff1a6;
+    }
+    .credits-link-card-support .credits-link-title {
+      color: #fff8dc;
+      text-shadow: 0 0 12px rgba(255, 215, 0, 0.18);
+    }
+    .credits-link-card-support .credits-link-open {
+      border-color: rgba(255, 215, 0, 0.72);
+      background: rgba(255, 215, 0, 0.18);
+      box-shadow: 0 0 14px rgba(255, 215, 0, 0.18);
+    }
+    .credits-link-card-support .credits-link-open:hover,
+    .credits-link-card-support .credits-link-open:focus-visible {
+      background: rgba(255, 215, 0, 0.26);
+      box-shadow: 0 0 20px rgba(255, 215, 0, 0.30);
     }
     .credits-link-kicker {
       color: #ffe08a;
@@ -721,27 +702,27 @@ module.exports = function generatePanel(
     }
     .credits-link-title {
       color: #fff4cf;
-      font-size: 13px;
+      font-size: 11px;
       font-weight: bold;
       line-height: 1.35;
     }
     .credits-link-copy {
       color: #d9e7f2;
-      font-size: 10px;
-      line-height: 1.5;
+      font-size: 9px;
+      line-height: 1.4;
     }
     .credits-link-open {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       width: 100%;
-      padding: 10px 12px;
+      padding: 8px 10px;
       border: 1px solid rgba(255, 215, 0, 0.42);
       border-radius: 10px;
       background: rgba(255, 215, 0, 0.10);
       color: #ffe7a6;
       font-family: var(--font);
-      font-size: 10px;
+      font-size: 9px;
       font-weight: bold;
       letter-spacing: 0.4px;
       cursor: pointer;
@@ -760,20 +741,27 @@ module.exports = function generatePanel(
       word-break: break-all;
     }
     @keyframes creditsBubblePulse {
-      0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.03), 0 0 18px rgba(255, 184, 77, 0.24); }
-      50% { transform: translateY(-3px) scale(1.03); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(255, 255, 255, 0.04), 0 0 28px rgba(255, 215, 0, 0.38); }
+      0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.03); }
+      50% { transform: translateY(-2px) scale(1.04); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.04), 0 0 22px rgba(255, 215, 0, 0.32); }
+    }
+    @keyframes supportCardPulse {
+      0%, 100% {
+        transform: translateY(0) scale(1);
+        box-shadow: 0 14px 28px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 215, 0, 0.14), 0 0 18px rgba(255, 196, 77, 0.24);
+      }
+      50% {
+        transform: translateY(-2px) scale(1.015);
+        box-shadow: 0 18px 34px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 215, 0, 0.18), 0 0 28px rgba(255, 215, 0, 0.42);
+      }
     }
     @media (max-width: 960px) {
-      #credits-links-panel {
+      #support-links-panel {
         grid-template-columns: 1fr;
         width: min(92%, 560px);
-        bottom: 4%;
+        top: 53%;
       }
       .credits-link-card {
         min-height: 0;
-      }
-      #credits-floating-text {
-        display: none;
       }
     }
   </style>
@@ -868,12 +856,6 @@ module.exports = function generatePanel(
     })();
   </script>
 
-  <script nonce="${nonce}" src=${vscodeBridgeUriSafe}></script>
-  <script nonce="${nonce}" src=${gameStateUriSafe}></script>
-  <script nonce="${nonce}" src=${uiRendererUriSafe}></script>
-  <script nonce="${nonce}" src=${eventHandlersUriSafe}></script>
-  <script nonce="${nonce}" src=${navigationUriSafe}></script>
-
   <script nonce="${nonce}">
     // #region debug-point A-E:panel-runtime
     function reportPanelDebug(hypothesisId, location, msg, data) {
@@ -905,29 +887,34 @@ module.exports = function generatePanel(
 
     window.PreloadedAssets = {
       images: {},
-      ready: Promise.all([
-        loadPanelImage(window.AppConfig.assets.dungeon),
-        loadPanelImage(window.AppConfig.assets.hero),
-        loadPanelImage(window.AppConfig.assets.bug),
-        loadPanelImage(window.AppConfig.assets.heroAttack || window.AppConfig.assets.hero)
-      ]).then(function(results) {
-        window.PreloadedAssets.images.dungeon = results[0];
-        window.PreloadedAssets.images.hero = results[1];
-        window.PreloadedAssets.images.bug = results[2];
-        window.PreloadedAssets.images.heroAttack = results[3] || results[1];
-        reportPanelDebug('B', 'panel.js:asset-preload', 'browser image preload success', {
-          dungeon: !!results[0],
-          hero: !!results[1],
-          bug: !!results[2],
-          heroAttack: !!results[3]
+      ready: null,
+      ensureReady() {
+        if (this.ready) return this.ready;
+        this.ready = Promise.all([
+          loadPanelImage(window.AppConfig.assets.dungeon),
+          loadPanelImage(window.AppConfig.assets.hero),
+          loadPanelImage(window.AppConfig.assets.bug),
+          loadPanelImage(window.AppConfig.assets.heroAttack || window.AppConfig.assets.hero)
+        ]).then((results) => {
+          this.images.dungeon = results[0];
+          this.images.hero = results[1];
+          this.images.bug = results[2];
+          this.images.heroAttack = results[3] || results[1];
+          reportPanelDebug('B', 'panel.js:asset-preload', 'browser image preload success', {
+            dungeon: !!results[0],
+            hero: !!results[1],
+            bug: !!results[2],
+            heroAttack: !!results[3]
+          });
+          return this.images;
+        }).catch((error) => {
+          reportPanelDebug('B', 'panel.js:asset-preload', 'browser image preload failed', {
+            message: error && error.message ? error.message : String(error)
+          });
+          throw error;
         });
-        return window.PreloadedAssets.images;
-      }).catch(function(error) {
-        reportPanelDebug('B', 'panel.js:asset-preload', 'browser image preload failed', {
-          message: error && error.message ? error.message : String(error)
-        });
-        throw error;
-      })
+        return this.ready;
+      }
     };
 
     window.PanelRuntime = {
@@ -1246,7 +1233,9 @@ module.exports = function generatePanel(
       routeHostMessage(event, 'document');
     });
 
-    document.addEventListener('DOMContentLoaded', function() {
+    window.__bootNoCodeQuest = function() {
+      if (window.__noCodeQuestBooted) return;
+      window.__noCodeQuestBooted = true;
       if (window.Navigation) {
         window.Navigation.init({
           playerName: window.AppConfig.playerName,
@@ -1265,7 +1254,48 @@ module.exports = function generatePanel(
       if (window.RuntimeMirror) {
         window.RuntimeMirror.start();
       }
-    });
+    };
+  </script>
+
+  <script nonce="${nonce}">
+    (function() {
+      const bootScripts = [
+        ${vscodeBridgeUriSafe},
+        ${gameStateUriSafe},
+        ${uiRendererUriSafe},
+        ${eventHandlersUriSafe},
+        ${navigationUriSafe}
+      ];
+
+      function loadScriptSequentially(index) {
+        if (index >= bootScripts.length) {
+          if (typeof window.__bootNoCodeQuest === 'function') {
+            window.__bootNoCodeQuest();
+          }
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = bootScripts[index];
+        script.async = false;
+        script.setAttribute('nonce', '${nonce}');
+        script.onload = function() {
+          loadScriptSequentially(index + 1);
+        };
+        script.onerror = function() {
+          reportPanelDebug('E', 'panel.js:boot-loader', 'module boot script failed', {
+            index: index,
+            src: bootScripts[index]
+          });
+        };
+        document.body.appendChild(script);
+      }
+
+      requestAnimationFrame(function() {
+        window.setTimeout(function() {
+          loadScriptSequentially(0);
+        }, 0);
+      });
+    })();
   </script>
 </body>
 </html>`;

@@ -81,8 +81,15 @@ const EventHandlers = {
         }
 
         if (target.closest('#btn-credits-back')) {
-            if (window.Navigation && typeof window.Navigation.closeCredits === 'function') {
-                window.Navigation.closeCredits();
+            if (window.Navigation && typeof window.Navigation.closeOverlay === 'function') {
+                window.Navigation.closeOverlay();
+            }
+            return;
+        }
+
+        if (target.closest('#btn-support-back')) {
+            if (window.Navigation && typeof window.Navigation.closeOverlay === 'function') {
+                window.Navigation.closeOverlay();
             }
             return;
         }
